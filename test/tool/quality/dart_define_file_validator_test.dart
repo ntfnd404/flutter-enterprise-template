@@ -26,7 +26,8 @@ void main() {
   test('accepts a valid CRLF environment profile', () {
     const contents =
         '${AppEnvironmentKeys.environment}=local\r\n'
-        '${AppEnvironmentKeys.urlStrategy}=hash\r\n';
+        '${AppEnvironmentKeys.urlStrategy}=hash\r\n'
+        '${AppEnvironmentKeys.storageNamespace}=local\r\n';
 
     expect(() => validator.validate(contents), returnsNormally);
   });
@@ -34,21 +35,27 @@ void main() {
   test('rejects malformed, duplicate, empty, unknown, and missing keys', () {
     const valid =
         '${AppEnvironmentKeys.environment}=local\n'
-        '${AppEnvironmentKeys.urlStrategy}=hash';
+        '${AppEnvironmentKeys.urlStrategy}=hash\n'
+        '${AppEnvironmentKeys.storageNamespace}=local';
     final cases = {
       'MALFORMED': 'Invalid configuration syntax',
       '${AppEnvironmentKeys.environment} =local\n'
-              '${AppEnvironmentKeys.urlStrategy}=hash':
+              '${AppEnvironmentKeys.urlStrategy}=hash\n'
+              '${AppEnvironmentKeys.storageNamespace}=local':
           'Invalid configuration syntax',
       '${AppEnvironmentKeys.environment}= local\n'
-              '${AppEnvironmentKeys.urlStrategy}=hash':
+              '${AppEnvironmentKeys.urlStrategy}=hash\n'
+              '${AppEnvironmentKeys.storageNamespace}=local':
           'Invalid configuration syntax',
-      '$valid\n${AppEnvironmentKeys.environment}=local': 'Duplicate dart-define key',
+      '$valid\n${AppEnvironmentKeys.environment}=local':
+          'Duplicate dart-define key',
       '$valid\nAPI_SECRET=value': 'Unsupported dart-define key',
       '${AppEnvironmentKeys.environment}=local\n'
-              '${AppEnvironmentKeys.urlStrategy}=':
+              '${AppEnvironmentKeys.urlStrategy}=hash\n'
+              '${AppEnvironmentKeys.storageNamespace}=':
           'Empty dart-define value',
-      '${AppEnvironmentKeys.environment}=local': 'Missing required dart-define key',
+      '${AppEnvironmentKeys.environment}=local':
+          'Missing required dart-define key',
     };
 
     for (final MapEntry(key: contents, value: expected) in cases.entries) {
@@ -69,7 +76,8 @@ void main() {
     const secret = 'credential-value-must-not-appear';
     const contents =
         '${AppEnvironmentKeys.environment}=local\n'
-        '${AppEnvironmentKeys.urlStrategy}=$secret';
+        '${AppEnvironmentKeys.urlStrategy}=hash\n'
+        '${AppEnvironmentKeys.storageNamespace}=$secret';
 
     expect(
       () => validator.validate(contents),

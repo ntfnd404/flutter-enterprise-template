@@ -27,10 +27,10 @@ final class AppEnvironment {
   /// `CapabilityConfiguration` is an illustrative name, not a type supplied by
   /// the scaffold. The real type belongs to its owning `packages/<context>`.
   /// The application loader remains the only production source that reads
-  /// compile-time dart-defines. Context factories receive raw values explicitly
-  /// and create typed immutable configuration, concrete SDK objects are created
-  /// later by their composition layer, and this root factory owns only
-  /// cross-capability validation.
+  /// compile-time dart-defines. Owning factories receive raw values explicitly
+  /// and create typed immutable configuration, while
+  /// `AppStartupConfiguration` composes those values for startup. This factory
+  /// validates only environment-owned deployment and framework policy.
   factory AppEnvironment.fromValues({
     required String environment,
     required String urlStrategy,
@@ -50,7 +50,6 @@ final class AppEnvironment {
         'Invalid ${AppEnvironmentKeys.urlStrategy}. Expected hash or path.',
       ),
     };
-
     return AppEnvironment._(
       kind: kind,
       urlStrategy: parsedUrlStrategy,
@@ -65,7 +64,10 @@ final class AppEnvironment {
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || other is AppEnvironment && other.kind == kind && other.urlStrategy == urlStrategy;
+      identical(this, other) ||
+      other is AppEnvironment &&
+          other.kind == kind &&
+          other.urlStrategy == urlStrategy;
 
   @override
   int get hashCode => Object.hash(kind, urlStrategy);

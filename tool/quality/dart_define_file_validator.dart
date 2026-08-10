@@ -1,6 +1,6 @@
-import 'package:template/app/environment/app_environment.dart';
-import 'package:template/app/environment/app_environment_exception.dart';
+import 'package:template/app/environment/app_configuration_exception.dart';
 import 'package:template/app/environment/app_environment_keys.dart';
+import 'package:template/app/environment/app_startup_configuration.dart';
 
 /// Validates tracked `--dart-define-from-file` profiles before Flutter starts.
 ///
@@ -19,7 +19,7 @@ final class DartDefineFileValidator {
     _validateKeys(values.keys.toSet());
 
     try {
-      AppEnvironment.fromValues(
+      AppStartupConfiguration.fromValues(
         environment: _required(
           values,
           AppEnvironmentKeys.environment,
@@ -28,8 +28,12 @@ final class DartDefineFileValidator {
           values,
           AppEnvironmentKeys.urlStrategy,
         ),
+        storageNamespace: _required(
+          values,
+          AppEnvironmentKeys.storageNamespace,
+        ),
       );
-    } on AppEnvironmentException {
+    } on AppConfigurationException {
       throw const DartDefineValidationException(
         'Dart-define values violate the application environment contract.',
       );
@@ -42,7 +46,9 @@ final class DartDefineFileValidator {
 
     for (var index = 0; index < lines.length; index++) {
       final rawLine = lines[index];
-      final line = rawLine.endsWith('\r') ? rawLine.substring(0, rawLine.length - 1) : rawLine;
+      final line = rawLine.endsWith('\r')
+          ? rawLine.substring(0, rawLine.length - 1)
+          : rawLine;
       final normalized = line.trim();
       if (normalized.isEmpty || normalized.startsWith('#')) {
         continue;
@@ -74,13 +80,17 @@ final class DartDefineFileValidator {
         );
       }
       if (!AppEnvironmentKeys.required.contains(key)) {
-        throw DartDefineValidationException('Unsupported dart-define key: $key.');
+        throw DartDefineValidationException(
+          'Unsupported dart-define key: $key.',
+        );
       }
       if (values.containsKey(key)) {
         throw DartDefineValidationException('Duplicate dart-define key: $key.');
       }
       if (value.isEmpty) {
-        throw DartDefineValidationException('Empty dart-define value for key: $key.');
+        throw DartDefineValidationException(
+          'Empty dart-define value for key: $key.',
+        );
       }
       values[key] = value;
     }
@@ -100,7 +110,9 @@ final class DartDefineFileValidator {
   String _required(Map<String, String> values, String key) {
     final value = values[key];
     if (value == null) {
-      throw DartDefineValidationException('Missing required dart-define key: $key.');
+      throw DartDefineValidationException(
+        'Missing required dart-define key: $key.',
+      );
     }
 
     return value;

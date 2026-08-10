@@ -11,9 +11,13 @@ abstract final class AppEnvironmentKeys {
   /// Selects the Flutter Web browser URL strategy.
   static const urlStrategy = 'APP_URL_STRATEGY';
 
+  /// Separates app-owned local persistence between deployment profiles.
+  static const storageNamespace = 'APP_STORAGE_NAMESPACE';
+
   /// Every key that must be present in a complete environment profile.
   static const required = <String>{
     environment,
     urlStrategy,
+    storageNamespace,
   };
 }

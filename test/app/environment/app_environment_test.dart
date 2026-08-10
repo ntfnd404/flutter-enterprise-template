@@ -13,6 +13,7 @@ void main() {
         {
           AppEnvironmentKeys.environment,
           AppEnvironmentKeys.urlStrategy,
+          AppEnvironmentKeys.storageNamespace,
         },
       );
     });
