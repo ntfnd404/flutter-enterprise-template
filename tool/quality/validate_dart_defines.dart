@@ -9,7 +9,7 @@ const int _invalidDataExitCode = 65;
 ///
 /// Usage:
 /// ```text
-/// dart run tool/quality/validate_dart_defines.dart env/local.env
+/// dart tool/quality/validate_dart_defines.dart env/local.env
 /// ```
 ///
 /// CI/CD must invoke this command for the exact file subsequently passed to
@@ -21,7 +21,7 @@ const int _invalidDataExitCode = 65;
 void main(List<String> arguments) {
   if (arguments.length != 1) {
     stderr.writeln(
-      'Usage: dart run tool/quality/validate_dart_defines.dart <env-file>',
+      'Usage: dart tool/quality/validate_dart_defines.dart <env-file>',
     );
     exitCode = _usageExitCode;
 

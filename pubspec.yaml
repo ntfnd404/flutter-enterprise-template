@@ -4,16 +4,24 @@ publish_to: 'none'
 version: 0.1.0+1
 
 environment:
-  sdk: ^3.11.0
+  sdk: ^3.12.2
+
+workspace:
+  - packages/app_database
 
 dependencies:
+  app_database: 0.1.0
   flutter:
     sdk: flutter
+  path: 1.9.1
+  path_provider: 2.1.6
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  integration_test:
+    sdk: flutter
 
 flutter:
   uses-material-design: true

@@ -1,0 +1,13 @@
+targets:
+  $default:
+    builders:
+      drift_dev:
+        generate_for:
+          include:
+            - lib/src/**
+        options:
+          databases:
+            application_database: lib/src/application_database.dart
+          # drift_dev appends the database key (`application_database`).
+          test_dir: test/migrations/
+          schema_dir: lib/src/schema/
