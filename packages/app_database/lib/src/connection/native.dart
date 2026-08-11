@@ -1,7 +1,7 @@
 import 'dart:io';
 
-import 'package:app_database/src/app_database_configuration.dart';
-import 'package:app_database/src/app_database_configuration_exception.dart';
+import 'package:app_database/src/configuration/app_database_configuration.dart';
+import 'package:app_database/src/configuration/app_database_configuration_exception.dart';
 import 'package:app_database/src/connection/app_database_connection.dart';
 import 'package:drift/native.dart';
 import 'package:path/path.dart' as path;

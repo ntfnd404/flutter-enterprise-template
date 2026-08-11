@@ -9,5 +9,5 @@ targets:
           databases:
             application_database: lib/src/application_database.dart
           # drift_dev appends the database key (`application_database`).
-          test_dir: test/migrations/
-          schema_dir: lib/src/schema/
+          test_dir: test/migrations/drift
+          schema_dir: lib/src/schema

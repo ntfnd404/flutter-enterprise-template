@@ -14,7 +14,25 @@ void main() {
     );
     addTearDown(first.dispose);
     await first.initialize();
-    await first.catalogItemsStore.insertItem(title);
+    final itemId = await first.stores.catalog.items.insertItem(
+      title: title,
+      description: 'Web persistence description',
+      priceMinorUnits: 100,
+      currencyCode: 'USD',
+      categoryId: null,
+    );
+    expect(
+      await first.stores.catalog.items.updateDraft(
+        id: itemId,
+        expectedRevision: 0,
+        title: title,
+        description: 'Revised Web persistence description',
+        priceMinorUnits: 200,
+        currencyCode: 'EUR',
+        categoryId: null,
+      ),
+      1,
+    );
     await first.dispose();
 
     final reopened = createAppDatabaseModule(
@@ -23,11 +41,16 @@ void main() {
     addTearDown(reopened.dispose);
     await reopened.initialize();
 
-    final items = await reopened.catalogItemsStore.watchItems().first;
-    expect(items.any((item) => item.title == title), isTrue);
+    final items = await reopened.stores.catalog.items.watchItems().first;
+    final persisted = items.singleWhere((item) => item.id == itemId);
+    expect(persisted.title, title);
+    expect(persisted.description, 'Revised Web persistence description');
+    expect(persisted.priceMinorUnits, 200);
+    expect(persisted.currencyCode, 'EUR');
+    expect(persisted.revision, 1);
 
     for (final item in items) {
-      await reopened.catalogItemsStore.deleteItem(item.id);
+      await reopened.stores.catalog.items.deleteItem(item.id);
     }
   });
 }

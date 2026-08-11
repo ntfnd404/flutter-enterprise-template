@@ -1,4 +1,4 @@
-import 'package:app_database/src/app_database_configuration.dart';
+import 'package:app_database/src/configuration/app_database_configuration.dart';
 import 'package:app_database/src/connection/app_database_connection.dart';
 import 'package:drift/wasm.dart';
 

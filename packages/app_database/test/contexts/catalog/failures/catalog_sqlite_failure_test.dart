@@ -1,5 +1,5 @@
-import 'package:app_database/src/contexts/catalog/items/store/catalog_items_sqlite_failure.dart';
-import 'package:app_database/src/contexts/catalog/items/store/catalog_items_store_exception.dart';
+import 'package:app_database/src/contexts/catalog/failures/catalog_sqlite_failure.dart';
+import 'package:app_database/src/contexts/catalog/failures/catalog_store_exception.dart';
 import 'package:sqlite3/common.dart';
 import 'package:test/test.dart';
 
@@ -19,13 +19,13 @@ void main() {
       final originalStack = StackTrace.fromString('original-sqlite-stack');
 
       try {
-        throwCatalogItemsSqliteFailure(
+        throwCatalogSqliteFailure(
           error: vendor,
           sqliteError: vendor,
           stackTrace: originalStack,
         );
       } catch (error, stackTrace) {
-        expect(error, isA<CatalogItemsStoreException>());
+        expect(error, isA<CatalogStoreException>());
         expect(identical(stackTrace, originalStack), isTrue);
         expect(error.toString(), isNot(contains('private vendor message')));
       }
@@ -47,7 +47,7 @@ void main() {
       final originalStack = StackTrace.fromString('original-sqlite-stack');
 
       try {
-        throwCatalogItemsSqliteFailure(
+        throwCatalogSqliteFailure(
           error: vendor,
           sqliteError: vendor,
           stackTrace: originalStack,
@@ -64,7 +64,7 @@ void main() {
     final originalStack = StackTrace.fromString('original-remote-stack');
 
     try {
-      throwCatalogItemsSqliteFailure(
+      throwCatalogSqliteFailure(
         error: wrapper,
         sqliteError: null,
         stackTrace: originalStack,

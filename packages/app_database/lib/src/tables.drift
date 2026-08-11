@@ -1,1 +1,2 @@
+import 'contexts/catalog/categories/tables/catalog_categories.drift';
 import 'contexts/catalog/items/tables/catalog_items.drift';

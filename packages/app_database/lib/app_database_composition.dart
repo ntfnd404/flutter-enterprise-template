@@ -7,8 +7,9 @@
 /// {@category database-architecture}
 library;
 
-export 'src/app_database_configuration.dart';
-export 'src/app_database_configuration_exception.dart';
 export 'src/app_database_module.dart'
     show AppDatabaseModule, createAppDatabaseModule;
-export 'src/app_database_open_exception.dart';
+export 'src/app_database_stores.dart' show AppDatabaseStores;
+export 'src/configuration/app_database_configuration.dart';
+export 'src/configuration/app_database_configuration_exception.dart';
+export 'src/connection/app_database_open_exception.dart';

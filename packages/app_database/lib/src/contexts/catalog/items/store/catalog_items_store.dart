@@ -8,13 +8,57 @@ abstract interface class CatalogItemsStore {
   /// Watches all stored Catalog items in stable insertion order.
   Stream<List<StoredCatalogItem>> watchItems();
 
-  /// Inserts a caller-validated canonical title and returns its generated ID.
-  Future<int> insertItem(String title);
+  /// Loads one raw record, or `null` when [id] is absent.
+  Future<StoredCatalogItem?> getItem(int id);
 
-  /// Updates completion state and returns the number of affected rows.
-  Future<int> setItemCompleted({
+  /// Loads existing records for [ids] in stable identifier order.
+  ///
+  /// Business status is intentionally not interpreted at this persistence
+  /// boundary. An empty set returns an empty list without querying SQLite.
+  Future<List<StoredCatalogItem>> findItemsByIds(Set<int> ids);
+
+  /// Inserts a caller-validated draft and returns its generated ID.
+  Future<int> insertItem({
+    required String title,
+    required String description,
+    required int priceMinorUnits,
+    required String currencyCode,
+    required int? categoryId,
+  });
+
+  /// Replaces draft details conditionally and returns affected row count.
+  Future<int> updateDraft({
     required int id,
-    required bool isCompleted,
+    required int expectedRevision,
+    required String title,
+    required String description,
+    required int priceMinorUnits,
+    required String currencyCode,
+    required int? categoryId,
+  });
+
+  /// Replaces a published offer while its category remains active.
+  Future<int> updatePublishedOffer({
+    required int id,
+    required int expectedRevision,
+    required String title,
+    required String description,
+    required int priceMinorUnits,
+    required String currencyCode,
+    required int categoryId,
+  });
+
+  /// Publishes a draft while its assigned category remains active.
+  Future<int> publishDraft({
+    required int id,
+    required int expectedRevision,
+    required int requiredActiveCategoryId,
+  });
+
+  /// Archives a published item conditionally and returns affected row count.
+  Future<int> archivePublished({
+    required int id,
+    required int expectedRevision,
   });
 
   /// Deletes an item and returns the number of affected rows.

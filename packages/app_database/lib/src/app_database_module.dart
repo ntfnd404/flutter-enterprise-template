@@ -1,10 +1,9 @@
-import 'package:app_database/src/app_database_configuration.dart';
+import 'package:app_database/src/app_database_stores.dart';
 import 'package:app_database/src/application_database.dart';
+import 'package:app_database/src/configuration/app_database_configuration.dart';
 import 'package:app_database/src/connection/app_database_connection.dart';
 import 'package:app_database/src/connection/app_database_storage_policy.dart';
 import 'package:app_database/src/connection/connection.dart';
-import 'package:app_database/src/contexts/catalog/items/store/catalog_items_store.dart';
-import 'package:app_database/src/contexts/catalog/items/store/drift_catalog_items_store.dart';
 
 /// Owned shared physical database for one application graph.
 final class AppDatabaseModule {
@@ -20,20 +19,22 @@ final class AppDatabaseModule {
   bool _isDisposalRequested = false;
   AppDatabaseConnection? _connection;
   ApplicationDatabase? _database;
-  CatalogItemsStore? _catalogItemsStore;
+  AppDatabaseStores? _stores;
   Future<void>? _initialization;
   Future<void>? _disposal;
 
-  /// Narrow borrowed Catalog persistence slice.
+  /// Typed borrowed context stores published by this module.
   ///
-  /// The store becomes available only after [initialize] succeeds. The shared
-  /// database module remains its owner; Catalog composition must not close it.
-  CatalogItemsStore get catalogItemsStore {
+  /// The store catalog becomes available only after [initialize] succeeds. The
+  /// shared database module remains the owner of the physical connection;
+  /// application composition must narrow this value immediately and never
+  /// close its stores.
+  AppDatabaseStores get stores {
     if (_state != _AppDatabaseModuleState.ready || _isDisposalRequested) {
       throw StateError('Application database module is not ready.');
     }
 
-    return _catalogItemsStore!;
+    return _stores!;
   }
 
   /// Opens the connection and applies pending schema migrations.
@@ -64,9 +65,7 @@ final class AppDatabaseModule {
       await _openAndMigrateDatabase(database);
 
       if (!_isDisposalRequested) {
-        _catalogItemsStore = DriftCatalogItemsStore(
-          dao: database.catalogItemsDao,
-        );
+        _stores = createAppDatabaseStores(database);
         _state = _AppDatabaseModuleState.ready;
       }
     } catch (error, stackTrace) {

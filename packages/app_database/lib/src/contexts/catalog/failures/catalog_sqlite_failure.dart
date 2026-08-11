@@ -1,4 +1,4 @@
-import 'package:app_database/src/contexts/catalog/items/store/catalog_items_store_exception.dart';
+import 'package:app_database/src/contexts/catalog/failures/catalog_store_exception.dart';
 import 'package:sqlite3/common.dart';
 
 /// Translates only temporary SQLite contention into an expected store failure.
@@ -6,19 +6,17 @@ import 'package:sqlite3/common.dart';
 /// Every other SQLite failure remains unexpected and is rethrown as the same
 /// object with its original stack. Constraint, corruption, read-only,
 /// disk-full, and I/O failures are never ordinary temporary unavailability.
-Never throwCatalogItemsSqliteFailure({
+Never throwCatalogSqliteFailure({
   required Object error,
   required SqliteException? sqliteError,
   required StackTrace stackTrace,
 }) {
-  switch (sqliteError?.resultCode) {
-    case SqlError.SQLITE_BUSY:
-    case SqlError.SQLITE_LOCKED:
-      Error.throwWithStackTrace(
-        const CatalogItemsStoreException(),
-        stackTrace,
-      );
-    default:
-      Error.throwWithStackTrace(error, stackTrace);
+  final isContention = switch (sqliteError?.resultCode) {
+    SqlError.SQLITE_BUSY || SqlError.SQLITE_LOCKED => true,
+    _ => false,
+  };
+  if (isContention) {
+    Error.throwWithStackTrace(const CatalogStoreException(), stackTrace);
   }
+  Error.throwWithStackTrace(error, stackTrace);
 }

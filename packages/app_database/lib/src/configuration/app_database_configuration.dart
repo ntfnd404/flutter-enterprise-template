@@ -1,4 +1,4 @@
-import 'package:app_database/src/app_database_configuration_exception.dart';
+import 'package:app_database/src/configuration/app_database_configuration_exception.dart';
 
 /// Immutable connection configuration for the shared physical database.
 final class AppDatabaseConfiguration {

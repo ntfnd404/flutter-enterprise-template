@@ -1,21 +1,30 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:app_database/app_database_catalog.dart';
 import 'package:app_database/app_database_composition.dart';
+import 'package:app_database/contexts/catalog.dart';
 import 'package:app_database/src/app_database_module.dart'
     show createAppDatabaseModuleForTesting;
 import 'package:app_database/src/connection/app_database_connection.dart';
-import 'package:drift/drift.dart';
+import 'package:drift/drift.dart' hide isNotNull;
 import 'package:drift/isolate.dart';
 import 'package:drift/native.dart';
+import 'package:drift_dev/api/migrations_native.dart';
 import 'package:sqlite3/common.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite;
 import 'package:test/test.dart';
 
+import 'migrations/drift/application_database/generated/schema.dart';
+
 void main() {
   const operationTimeout = Duration(seconds: 10);
   late Directory directory;
+  late SchemaVerifier verifier;
+
+  setUpAll(() {
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    verifier = SchemaVerifier(GeneratedHelper());
+  });
 
   setUp(() async {
     directory = await Directory.systemTemp.createTemp(
@@ -30,14 +39,14 @@ void main() {
     final first = createAppDatabaseModule(configuration: configuration);
     addTearDown(first.dispose);
     await first.initialize();
-    await first.catalogItemsStore.insertItem('Persisted item');
+    await _insertProduct(first.stores.catalog.items, title: 'Persisted item');
     await first.dispose();
 
     final reopened = createAppDatabaseModule(configuration: configuration);
     addTearDown(reopened.dispose);
     await reopened.initialize();
 
-    final items = await reopened.catalogItemsStore.watchItems().first;
+    final items = await reopened.stores.catalog.items.watchItems().first;
     expect(items, hasLength(1));
     expect(items.single.title, 'Persisted item');
   });
@@ -48,15 +57,19 @@ void main() {
     );
     addTearDown(module.dispose);
 
-    expect(() => module.catalogItemsStore, throwsStateError);
+    expect(() => module.stores, throwsStateError);
     await module.initialize();
-    expect(() => module.catalogItemsStore, returnsNormally);
+    final stores = module.stores;
+    expect(module.stores, same(stores));
+    expect(module.stores.catalog, same(stores.catalog));
+    expect(() => stores.catalog.items, returnsNormally);
+    expect(() => stores.catalog.categories, returnsNormally);
     expect(module.initialize, throwsStateError);
 
     final disposal = module.dispose();
-    expect(() => module.catalogItemsStore, throwsStateError);
+    expect(() => module.stores, throwsStateError);
     await disposal;
-    expect(() => module.catalogItemsStore, throwsStateError);
+    expect(() => module.stores, throwsStateError);
   });
 
   test('shares one disposal Future between concurrent callers', () async {
@@ -86,14 +99,14 @@ void main() {
     final initialization = module.initialize();
     var storeWasBlockedWhenInitializationCompleted = false;
     final initializationObserver = initialization.then((_) {
-      expect(() => module.catalogItemsStore, throwsStateError);
+      expect(() => module.stores, throwsStateError);
       storeWasBlockedWhenInitializationCompleted = true;
     });
 
     final firstDisposal = module.dispose();
     final secondDisposal = module.dispose();
     expect(identical(firstDisposal, secondDisposal), isTrue);
-    expect(() => module.catalogItemsStore, throwsStateError);
+    expect(() => module.stores, throwsStateError);
 
     connection.complete(
       AppDatabaseConnection(
@@ -108,7 +121,7 @@ void main() {
 
     expect(storeWasBlockedWhenInitializationCompleted, isTrue);
     expect(closeRecorder.closeCount, 1);
-    expect(() => module.catalogItemsStore, throwsStateError);
+    expect(() => module.stores, throwsStateError);
   });
 
   test('readiness failure leaves the acquired connection disposable', () async {
@@ -130,7 +143,7 @@ void main() {
       throwsA(isA<DriftRemoteException>()),
     );
     expect(module.initialize, throwsStateError);
-    expect(() => module.catalogItemsStore, throwsStateError);
+    expect(() => module.stores.catalog.items, throwsStateError);
 
     final firstDisposal = module.dispose();
     final secondDisposal = module.dispose();
@@ -159,13 +172,63 @@ void main() {
       ),
     );
     expect(module.initialize, throwsStateError);
-    expect(() => module.catalogItemsStore, throwsStateError);
+    expect(() => module.stores.catalog.items, throwsStateError);
 
     final first = module.dispose();
     final second = module.dispose();
     expect(identical(first, second), isTrue);
     await first;
   });
+
+  test(
+    'migration failure remains primary while cleanup fails separately',
+    () async {
+      final schema = await verifier.schemaAt(1);
+      addTearDown(schema.close);
+      schema.rawDatabase
+        ..execute('PRAGMA ignore_check_constraints = ON')
+        ..execute(
+          'INSERT INTO catalog_items(id, title, is_completed) '
+          'VALUES (1, \'\', 0)',
+        )
+        ..execute('PRAGMA ignore_check_constraints = OFF');
+      final cleanupFailure = StateError('controlled migration cleanup failure');
+      final closeRecorder = _RecordingCloseInterceptor(
+        closeFailure: cleanupFailure,
+      );
+      final executor = schema.newConnection().executor.interceptWith(
+        closeRecorder,
+      );
+      final module = createAppDatabaseModuleForTesting(
+        configuration: _configuration(directory),
+        connector: (_) async => AppDatabaseConnection(
+          executor: executor,
+          storageKind: AppDatabaseStorageKind.native,
+        ),
+      );
+
+      final initialization = module.initialize();
+      final firstFailure = await _captureFailure(initialization);
+      final secondFailure = await _captureFailure(initialization);
+
+      expect(firstFailure.error, isA<SqliteException>());
+      expect(secondFailure.error, same(firstFailure.error));
+      expect(
+        secondFailure.stackTrace.toString(),
+        firstFailure.stackTrace.toString(),
+      );
+      expect(module.initialize, throwsStateError);
+      expect(() => module.stores.catalog.items, throwsStateError);
+      expect(() => module.stores.catalog.categories, throwsStateError);
+
+      final firstDisposal = module.dispose();
+      final secondDisposal = module.dispose();
+      expect(identical(firstDisposal, secondDisposal), isTrue);
+      await expectLater(firstDisposal, throwsA(same(cleanupFailure)));
+      await expectLater(secondDisposal, throwsA(same(cleanupFailure)));
+      expect(closeRecorder.closeCount, 1);
+    },
+  );
 
   test('policy rejection leaves the acquired executor disposable', () async {
     final closeRecorder = _RecordingCloseInterceptor();
@@ -231,10 +294,11 @@ void main() {
     final module = await _openLockedModule(directory);
 
     await expectLater(
-      module.catalogItemsStore
-          .insertItem('Blocked item')
-          .timeout(operationTimeout),
-      throwsA(isA<CatalogItemsStoreException>()),
+      _insertProduct(
+        module.stores.catalog.items,
+        title: 'Blocked item',
+      ).timeout(operationTimeout),
+      throwsA(isA<CatalogStoreException>()),
     );
   });
 
@@ -242,8 +306,8 @@ void main() {
     final module = await _openLockedModule(directory);
 
     await expectLater(
-      module.catalogItemsStore.watchItems().first.timeout(operationTimeout),
-      throwsA(isA<CatalogItemsStoreException>()),
+      module.stores.catalog.items.watchItems().first.timeout(operationTimeout),
+      throwsA(isA<CatalogStoreException>()),
     );
   });
 
@@ -255,7 +319,7 @@ void main() {
     await module.initialize();
 
     try {
-      await module.catalogItemsStore.insertItem('');
+      await _insertProduct(module.stores.catalog.items, title: '');
       fail('Expected the SQLite constraint failure to remain unexpected.');
     } on DriftRemoteException catch (error) {
       expect(
@@ -317,3 +381,26 @@ final class _RecordingCloseInterceptor extends QueryInterceptor {
     }
   }
 }
+
+Future<({Object error, StackTrace stackTrace})> _captureFailure(
+  Future<void> future,
+) async {
+  try {
+    await future;
+  } on Object catch (error, stackTrace) {
+    return (error: error, stackTrace: stackTrace);
+  }
+
+  fail('Expected the operation to fail.');
+}
+
+Future<int> _insertProduct(
+  CatalogItemsStore store, {
+  required String title,
+}) => store.insertItem(
+  title: title,
+  description: 'Product description',
+  priceMinorUnits: 100,
+  currencyCode: 'USD',
+  categoryId: null,
+);

@@ -37,9 +37,6 @@ generate-database:
 
 database-schema:
 	cd packages/app_database && $(DART) run drift_dev make-migrations
-	cd packages/app_database && $(DART) run drift_dev schema generate \
-		lib/src/schema/application_database \
-		test/migrations/application_database/generated
 
 test-database-web:
 	$(FLUTTER) drive \

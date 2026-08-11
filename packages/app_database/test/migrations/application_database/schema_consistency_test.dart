@@ -3,7 +3,7 @@ import 'package:drift/native.dart';
 import 'package:drift_dev/api/migrations_native.dart';
 import 'package:test/test.dart';
 
-import 'generated/schema.dart';
+import '../drift/application_database/generated/schema.dart';
 
 void main() {
   test(

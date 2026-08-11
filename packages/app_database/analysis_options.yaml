@@ -4,4 +4,4 @@ analyzer:
   exclude:
     # drift_dev schema verifier helpers contain analyzer-level raw types and
     # are regenerated verbatim. Authored migration tests remain analyzed.
-    - test/migrations/application_database/generated/**
+    - test/migrations/drift/application_database/generated/**

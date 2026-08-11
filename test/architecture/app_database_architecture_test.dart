@@ -6,18 +6,47 @@ import 'support/architecture_files.dart';
 
 void main() {
   test('application database public APIs hide provider internals', () {
-    final publicContents = <String>[
-      'packages/app_database/lib/app_database_catalog.dart',
-      'packages/app_database/lib/app_database_composition.dart',
+    final contextContents = <String>[
+      'packages/app_database/lib/contexts/catalog.dart',
     ].map((path) => File(path).readAsStringSync()).join('\n');
+    final compositionContents = File(
+      'packages/app_database/lib/app_database_composition.dart',
+    ).readAsStringSync();
+    final publicContents = '$compositionContents\n$contextContents';
 
     expect(publicContents, contains('catalog_items_store.dart'));
     expect(publicContents, contains('stored_catalog_item.dart'));
     expect(publicContents, contains('app_database_module.dart'));
+    expect(publicContents, contains('app_database_stores.dart'));
+    expect(contextContents, contains('catalog_database_stores.dart'));
     expect(publicContents, isNot(contains('application_database.dart')));
     expect(publicContents, isNot(contains('/dao/')));
-    expect(publicContents, isNot(contains('/connection/')));
+    expect(contextContents, isNot(contains('/connection/')));
     expect(publicContents, isNot(contains('.g.dart')));
+  });
+
+  test('context persistence entrypoints are grouped by owning context', () {
+    final contextEntrypoints = Directory(
+      'packages/app_database/lib/contexts',
+    ).listSync().whereType<File>().map((file) => file.path).toList()..sort();
+
+    expect(contextEntrypoints, <String>[
+      'packages/app_database/lib/contexts/catalog.dart',
+    ]);
+    expect(
+      File(
+        'packages/app_database/lib/app_database_catalog.dart',
+      ).existsSync(),
+      isFalse,
+    );
+    final orderingDirectory = Directory(
+      'packages/app_database/lib/src/contexts/ordering',
+    );
+    final orderingSources = orderingDirectory.existsSync()
+        ? orderingDirectory.listSync(recursive: true).whereType<File>().toList()
+        : const <File>[];
+
+    expect(orderingSources, isEmpty);
   });
 
   test('application database remains app and Flutter neutral', () {
@@ -71,6 +100,61 @@ void main() {
     expect(offenders, isEmpty);
   });
 
+  test('database module publishes typed lifecycle-free context stores', () {
+    final module = File(
+      'packages/app_database/lib/src/app_database_module.dart',
+    ).readAsStringSync();
+    final rootStores = File(
+      'packages/app_database/lib/src/app_database_stores.dart',
+    ).readAsStringSync();
+    final catalogStores = File(
+      'packages/app_database/lib/src/contexts/catalog/'
+      'catalog_database_stores.dart',
+    ).readAsStringSync();
+    final compositionEntrypoint = File(
+      'packages/app_database/lib/app_database_composition.dart',
+    ).readAsStringSync();
+    final catalogEntrypoint = File(
+      'packages/app_database/lib/contexts/catalog.dart',
+    ).readAsStringSync();
+    final databaseSources = dartFiles(
+      'packages/app_database/lib',
+    ).map((file) => file.readAsStringSync()).join('\n');
+
+    expect(module, contains('AppDatabaseStores? _stores'));
+    expect(module, contains('AppDatabaseStores get stores'));
+    expect(module, contains('createAppDatabaseStores(database)'));
+    expect(module, isNot(contains('CatalogItemsStore')));
+    expect(module, isNot(contains('CatalogCategoriesStore')));
+    expect(module, isNot(contains('DriftCatalog')));
+    expect(databaseSources, isNot(contains('catalogItemsStore')));
+    expect(databaseSources, isNot(contains('catalogCategoriesStore')));
+
+    expect(rootStores, contains('final CatalogDatabaseStores catalog'));
+    expect(rootStores, isNot(contains('OrderingDatabaseStores')));
+    expect(catalogStores, contains('final CatalogItemsStore items'));
+    expect(catalogStores, contains('final CatalogCategoriesStore categories'));
+    for (final source in <String>[rootStores, catalogStores]) {
+      expect(source, isNot(contains('Map<Type')));
+      expect(source, isNot(contains('operator []')));
+      expect(source, isNot(contains('get<T>')));
+      expect(source, isNot(contains('dispose(')));
+      expect(source, isNot(contains('ChangeNotifier')));
+      expect(source, isNot(contains('ValueNotifier')));
+    }
+
+    expect(compositionEntrypoint, contains('show AppDatabaseStores'));
+    expect(
+      compositionEntrypoint,
+      isNot(contains('createAppDatabaseStores')),
+    );
+    expect(catalogEntrypoint, contains('show CatalogDatabaseStores'));
+    expect(
+      catalogEntrypoint,
+      isNot(contains('createCatalogDatabaseStores')),
+    );
+  });
+
   test('context persistence uses the declared cluster structure', () {
     const contextsRoot = 'packages/app_database/lib/src/contexts';
     const allowedKinds = <String>{'tables', 'queries', 'dao', 'store'};
@@ -80,8 +164,15 @@ void main() {
         .where((file) {
           final relativePath = file.path.substring(contextsRoot.length + 1);
           final segments = relativePath.split('/');
+          final isContextFailure =
+              segments.length == 3 && segments[1] == 'failures';
+          final isContextAssembly =
+              segments.length == 2 &&
+              segments[1] == '${segments[0]}_database_stores.dart';
 
-          return segments.length < 4 || !allowedKinds.contains(segments[2]);
+          return !isContextFailure &&
+              !isContextAssembly &&
+              (segments.length < 4 || !allowedKinds.contains(segments[2]));
         })
         .map((file) => file.path)
         .toList();
@@ -105,7 +196,10 @@ void main() {
     expect(offenders, isEmpty);
   });
 
-  test('migration tooling uses one generated verifier path', () {
+  test('migration tooling separates authored and Drift-owned tests', () {
+    final buildConfiguration = File(
+      'packages/app_database/build.yaml',
+    ).readAsStringSync();
     expect(
       File(
         'packages/app_database/test/migrations/application_database/'
@@ -115,14 +209,68 @@ void main() {
     );
     expect(
       Directory(
-        'packages/app_database/test/migrations/application_database/generated',
+        'packages/app_database/test/migrations/drift/application_database/'
+        'generated',
       ).existsSync(),
       isTrue,
     );
     expect(
-      Directory('packages/app_database/test/migrations/generated').existsSync(),
+      File(
+        'packages/app_database/test/migrations/drift/application_database/'
+        'migration_test.dart',
+      ).existsSync(),
+      isTrue,
+    );
+    expect(
+      buildConfiguration,
+      contains('test_dir: test/migrations/drift'),
+    );
+    expect(
+      Directory(
+        'packages/app_database/test/migrations/application_database/generated',
+      ).existsSync(),
       isFalse,
     );
+  });
+
+  test('authored migrations are isolated from the current schema', () {
+    const migrationsRoot = 'packages/app_database/lib/src/migrations';
+    final migrationFiles = dartFiles(migrationsRoot).toList();
+    final applicationDatabase = File(
+      'packages/app_database/lib/src/application_database.dart',
+    ).readAsStringSync();
+    final contextMigrationDirectories =
+        Directory(
+              'packages/app_database/lib/src/contexts',
+            )
+            .listSync(recursive: true)
+            .whereType<Directory>()
+            .where((directory) => directory.path.endsWith('/migrations'))
+            .map((directory) => directory.path)
+            .toList();
+
+    expect(
+      migrationFiles.map((file) => file.path),
+      unorderedEquals(<String>[
+        '$migrationsRoot/application_database_migrations.dart',
+        '$migrationsRoot/v1_to_v2_catalog_products.dart',
+      ]),
+    );
+    expect(
+      migrationFiles
+          .where(
+            (file) => file.readAsStringSync().contains(
+              'src/application_database.dart',
+            ),
+          )
+          .map((file) => file.path),
+      isEmpty,
+    );
+    expect(applicationDatabase, isNot(contains('from1To2:')));
+    expect(applicationDatabase, isNot(contains('from2To3:')));
+    expect(applicationDatabase, contains('schemaVersion => 2'));
+    expect(applicationDatabase, isNot(contains('OrderingOrdersDao')));
+    expect(contextMigrationDirectories, isEmpty);
   });
 
   test('database package has no duplicate DAO ports or direct logging', () {
@@ -145,5 +293,20 @@ void main() {
 
     expect(daoPorts, isEmpty);
     expect(logging, isEmpty);
+  });
+
+  test('Catalog persistence exposes intent-specific lifecycle commands', () {
+    final store = File(
+      'packages/app_database/lib/src/contexts/catalog/items/store/'
+      'catalog_items_store.dart',
+    ).readAsStringSync();
+    final catalogSources = dartFiles(
+      'packages/app_database/lib/src/contexts/catalog',
+    ).map((file) => file.readAsStringSync()).join('\n');
+
+    expect(store, contains('publishDraft'));
+    expect(store, contains('archivePublished'));
+    expect(catalogSources, isNot(contains('setItemStatus')));
+    expect(catalogSources, isNot(contains('expectedStatusValue')));
   });
 }
