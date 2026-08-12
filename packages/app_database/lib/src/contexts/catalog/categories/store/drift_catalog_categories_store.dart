@@ -17,9 +17,7 @@ final class DriftCatalogCategoriesStore implements CatalogCategoriesStore {
   Stream<List<StoredCatalogCategory>> watchCategories() async* {
     try {
       await for (final records in _dao.watchCategories()) {
-        yield List<StoredCatalogCategory>.unmodifiable(
-          records.map(_mapRecord),
-        );
+        yield List<StoredCatalogCategory>.unmodifiable(records.map(_mapRecord));
       }
     } on SqliteException catch (error, stackTrace) {
       throwCatalogSqliteFailure(
@@ -49,12 +47,10 @@ final class DriftCatalogCategoriesStore implements CatalogCategoriesStore {
       _guardPersistence(() => _dao.insertCategory(name));
 
   @override
-  Future<int> setCategoryActive({
-    required int id,
-    required bool isActive,
-  }) => _guardPersistence(
-    () => _dao.setCategoryActive(id: id, isActive: isActive),
-  );
+  Future<int> setCategoryActive({required int id, required bool isActive}) =>
+      _guardPersistence(
+        () => _dao.setCategoryActive(id: id, isActive: isActive),
+      );
 
   Future<T> _guardPersistence<T>(Future<T> Function() operation) async {
     try {
@@ -79,6 +75,6 @@ final class DriftCatalogCategoriesStore implements CatalogCategoriesStore {
       StoredCatalogCategory(
         id: record.id,
         name: record.name,
-        activeValue: record.isActive,
+        isActive: record.isActive,
       );
 }

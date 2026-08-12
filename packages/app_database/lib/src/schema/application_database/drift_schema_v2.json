@@ -40,10 +40,10 @@
           {
             "name": "is_active",
             "getter_name": "isActive",
-            "moor_type": "int",
+            "moor_type": "bool",
             "nullable": false,
-            "customConstraints": "NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))",
-            "default_dart": "const CustomExpression('1')",
+            "customConstraints": "NOT NULL DEFAULT TRUE CHECK (is_active IN (FALSE, TRUE))",
+            "default_dart": "const CustomExpression('TRUE')",
             "default_client_dart": null,
             "dsl_features": []
           }
@@ -130,7 +130,7 @@
             "getter_name": "categoryId",
             "moor_type": "int",
             "nullable": true,
-            "customConstraints": "REFERENCES catalog_categories(id)ON DELETE SET NULL",
+            "customConstraints": "REFERENCES catalog_categories(id)ON DELETE RESTRICT",
             "default_dart": null,
             "default_client_dart": null,
             "dsl_features": [
@@ -142,7 +142,7 @@
                   },
                   "initially_deferred": false,
                   "on_update": null,
-                  "on_delete": "setNull"
+                  "on_delete": "restrict"
                 }
               }
             ]
@@ -160,7 +160,9 @@
         ],
         "is_virtual": false,
         "without_rowid": false,
-        "constraints": []
+        "constraints": [
+          "CHECK(status_value = 0 OR(length(description) > 0 AND price_minor_units > 0 AND currency_code <> 'XXX' AND category_id IS NOT NULL))"
+        ]
       }
     }
   ],
@@ -170,7 +172,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"catalog_categories\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT CHECK (id > 0), \"name\" TEXT NOT NULL CHECK (length(name) > 0), \"is_active\" INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"catalog_categories\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT CHECK (id > 0), \"name\" TEXT NOT NULL CHECK (length(name) > 0), \"is_active\" INTEGER NOT NULL DEFAULT TRUE CHECK (is_active IN (FALSE, TRUE)));"
         }
       ]
     },
@@ -179,7 +181,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"catalog_items\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT CHECK (id > 0), \"title\" TEXT NOT NULL CHECK (length(title) > 0), \"description\" TEXT NOT NULL DEFAULT '', \"price_minor_units\" INTEGER NOT NULL DEFAULT 0 CHECK (price_minor_units BETWEEN 0 AND 9007199254740991), \"currency_code\" TEXT NOT NULL DEFAULT 'XXX' CHECK (currency_code GLOB '[A-Z][A-Z][A-Z]'), \"status_value\" INTEGER NOT NULL DEFAULT 0 CHECK (status_value IN (0, 1, 2)), \"category_id\" INTEGER REFERENCES catalog_categories(id)ON DELETE SET NULL, \"revision\" INTEGER NOT NULL DEFAULT 0 CHECK (revision BETWEEN 0 AND 9007199254740991));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"catalog_items\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT CHECK (id > 0), \"title\" TEXT NOT NULL CHECK (length(title) > 0), \"description\" TEXT NOT NULL DEFAULT '', \"price_minor_units\" INTEGER NOT NULL DEFAULT 0 CHECK (price_minor_units BETWEEN 0 AND 9007199254740991), \"currency_code\" TEXT NOT NULL DEFAULT 'XXX' CHECK (currency_code GLOB '[A-Z][A-Z][A-Z]'), \"status_value\" INTEGER NOT NULL DEFAULT 0 CHECK (status_value IN (0, 1, 2)), \"category_id\" INTEGER REFERENCES catalog_categories(id)ON DELETE RESTRICT, \"revision\" INTEGER NOT NULL DEFAULT 0 CHECK (revision BETWEEN 0 AND 9007199254740991), CHECK(status_value = 0 OR(length(description) > 0 AND price_minor_units > 0 AND currency_code <> 'XXX' AND category_id IS NOT NULL)));"
         }
       ]
     }

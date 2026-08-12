@@ -102,7 +102,7 @@ final class CatalogItemsDao extends DatabaseAccessor<ApplicationDatabase>
     final activeCategory = select(catalogCategories)
       ..where(
         (category) =>
-            category.id.equals(categoryId) & category.isActive.equals(1),
+            category.id.equals(categoryId) & category.isActive.equals(true),
       );
 
     return (update(catalogItems)..where(
@@ -134,7 +134,7 @@ final class CatalogItemsDao extends DatabaseAccessor<ApplicationDatabase>
       ..where(
         (category) =>
             category.id.equals(requiredActiveCategoryId) &
-            category.isActive.equals(1),
+            category.isActive.equals(true),
       );
 
     return (update(catalogItems)..where(

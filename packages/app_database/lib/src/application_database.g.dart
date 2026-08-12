@@ -31,14 +31,15 @@ class CatalogCategories extends Table
   static const VerificationMeta _isActiveMeta = const VerificationMeta(
     'isActive',
   );
-  late final GeneratedColumn<int> isActive = GeneratedColumn<int>(
+  late final GeneratedColumn<bool> isActive = GeneratedColumn<bool>(
     'is_active',
     aliasedName,
     false,
-    type: DriftSqlType.int,
+    type: DriftSqlType.bool,
     requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))',
-    defaultValue: const CustomExpression('1'),
+    $customConstraints:
+        'NOT NULL DEFAULT TRUE CHECK (is_active IN (FALSE, TRUE))',
+    defaultValue: const CustomExpression('TRUE'),
   );
   @override
   List<GeneratedColumn> get $columns => [id, name, isActive];
@@ -89,7 +90,7 @@ class CatalogCategories extends Table
         data['${effectivePrefix}name'],
       )!,
       isActive: attachedDatabase.typeMapping.read(
-        DriftSqlType.int,
+        DriftSqlType.bool,
         data['${effectivePrefix}is_active'],
       )!,
     );
@@ -107,7 +108,7 @@ class CatalogCategories extends Table
 class CatalogCategory extends DataClass implements Insertable<CatalogCategory> {
   final int id;
   final String name;
-  final int isActive;
+  final bool isActive;
   const CatalogCategory({
     required this.id,
     required this.name,
@@ -118,7 +119,7 @@ class CatalogCategory extends DataClass implements Insertable<CatalogCategory> {
     final map = <String, Expression>{};
     map['id'] = Variable<int>(id);
     map['name'] = Variable<String>(name);
-    map['is_active'] = Variable<int>(isActive);
+    map['is_active'] = Variable<bool>(isActive);
     return map;
   }
 
@@ -138,7 +139,7 @@ class CatalogCategory extends DataClass implements Insertable<CatalogCategory> {
     return CatalogCategory(
       id: serializer.fromJson<int>(json['id']),
       name: serializer.fromJson<String>(json['name']),
-      isActive: serializer.fromJson<int>(json['is_active']),
+      isActive: serializer.fromJson<bool>(json['is_active']),
     );
   }
   @override
@@ -147,11 +148,11 @@ class CatalogCategory extends DataClass implements Insertable<CatalogCategory> {
     return <String, dynamic>{
       'id': serializer.toJson<int>(id),
       'name': serializer.toJson<String>(name),
-      'is_active': serializer.toJson<int>(isActive),
+      'is_active': serializer.toJson<bool>(isActive),
     };
   }
 
-  CatalogCategory copyWith({int? id, String? name, int? isActive}) =>
+  CatalogCategory copyWith({int? id, String? name, bool? isActive}) =>
       CatalogCategory(
         id: id ?? this.id,
         name: name ?? this.name,
@@ -189,7 +190,7 @@ class CatalogCategory extends DataClass implements Insertable<CatalogCategory> {
 class CatalogCategoriesCompanion extends UpdateCompanion<CatalogCategory> {
   final Value<int> id;
   final Value<String> name;
-  final Value<int> isActive;
+  final Value<bool> isActive;
   const CatalogCategoriesCompanion({
     this.id = const Value.absent(),
     this.name = const Value.absent(),
@@ -203,7 +204,7 @@ class CatalogCategoriesCompanion extends UpdateCompanion<CatalogCategory> {
   static Insertable<CatalogCategory> custom({
     Expression<int>? id,
     Expression<String>? name,
-    Expression<int>? isActive,
+    Expression<bool>? isActive,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
@@ -215,7 +216,7 @@ class CatalogCategoriesCompanion extends UpdateCompanion<CatalogCategory> {
   CatalogCategoriesCompanion copyWith({
     Value<int>? id,
     Value<String>? name,
-    Value<int>? isActive,
+    Value<bool>? isActive,
   }) {
     return CatalogCategoriesCompanion(
       id: id ?? this.id,
@@ -234,7 +235,7 @@ class CatalogCategoriesCompanion extends UpdateCompanion<CatalogCategory> {
       map['name'] = Variable<String>(name.value);
     }
     if (isActive.present) {
-      map['is_active'] = Variable<int>(isActive.value);
+      map['is_active'] = Variable<bool>(isActive.value);
     }
     return map;
   }
@@ -333,7 +334,7 @@ class CatalogItems extends Table with TableInfo<CatalogItems, CatalogItem> {
     true,
     type: DriftSqlType.int,
     requiredDuringInsert: false,
-    $customConstraints: 'REFERENCES catalog_categories(id)ON DELETE SET NULL',
+    $customConstraints: 'REFERENCES catalog_categories(id)ON DELETE RESTRICT',
   );
   static const VerificationMeta _revisionMeta = const VerificationMeta(
     'revision',
@@ -479,6 +480,10 @@ class CatalogItems extends Table with TableInfo<CatalogItems, CatalogItem> {
     return CatalogItems(attachedDatabase, alias);
   }
 
+  @override
+  List<String> get customConstraints => const [
+    'CHECK(status_value = 0 OR(length(description) > 0 AND price_minor_units > 0 AND currency_code <> \'XXX\' AND category_id IS NOT NULL))',
+  ];
   @override
   bool get dontWriteConstraints => true;
 }
@@ -784,29 +789,19 @@ abstract class _$ApplicationDatabase extends GeneratedDatabase {
     catalogCategories,
     catalogItems,
   ];
-  @override
-  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'catalog_categories',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('catalog_items', kind: UpdateKind.update)],
-    ),
-  ]);
 }
 
 typedef $CatalogCategoriesCreateCompanionBuilder =
     CatalogCategoriesCompanion Function({
       Value<int> id,
       required String name,
-      Value<int> isActive,
+      Value<bool> isActive,
     });
 typedef $CatalogCategoriesUpdateCompanionBuilder =
     CatalogCategoriesCompanion Function({
       Value<int> id,
       Value<String> name,
-      Value<int> isActive,
+      Value<bool> isActive,
     });
 
 final class $CatalogCategoriesReferences
@@ -857,7 +852,7 @@ class $CatalogCategoriesFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
-  ColumnFilters<int> get isActive => $composableBuilder(
+  ColumnFilters<bool> get isActive => $composableBuilder(
     column: $table.isActive,
     builder: (column) => ColumnFilters(column),
   );
@@ -907,7 +902,7 @@ class $CatalogCategoriesOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
-  ColumnOrderings<int> get isActive => $composableBuilder(
+  ColumnOrderings<bool> get isActive => $composableBuilder(
     column: $table.isActive,
     builder: (column) => ColumnOrderings(column),
   );
@@ -928,7 +923,7 @@ class $CatalogCategoriesAnnotationComposer
   GeneratedColumn<String> get name =>
       $composableBuilder(column: $table.name, builder: (column) => column);
 
-  GeneratedColumn<int> get isActive =>
+  GeneratedColumn<bool> get isActive =>
       $composableBuilder(column: $table.isActive, builder: (column) => column);
 
   Expression<T> catalogItemsRefs<T extends Object>(
@@ -989,7 +984,7 @@ class $CatalogCategoriesTableManager
               ({
                 Value<int> id = const Value.absent(),
                 Value<String> name = const Value.absent(),
-                Value<int> isActive = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
               }) => CatalogCategoriesCompanion(
                 id: id,
                 name: name,
@@ -999,7 +994,7 @@ class $CatalogCategoriesTableManager
               ({
                 Value<int> id = const Value.absent(),
                 required String name,
-                Value<int> isActive = const Value.absent(),
+                Value<bool> isActive = const Value.absent(),
               }) => CatalogCategoriesCompanion.insert(
                 id: id,
                 name: name,

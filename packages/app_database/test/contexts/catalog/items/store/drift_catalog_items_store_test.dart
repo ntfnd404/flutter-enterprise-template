@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:app_database/src/application_database.dart';
 import 'package:app_database/src/contexts/catalog/items/store/drift_catalog_items_store.dart';
-import 'package:drift/drift.dart' hide isNull;
+import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:drift/native.dart';
 import 'package:sqlite3/common.dart';
 import 'package:test/test.dart';
@@ -299,6 +299,9 @@ void main() {
   });
 
   test('database constraints reject invalid persistence values', () async {
+    final categoryId = await database.catalogCategoriesDao.insertCategory(
+      'Hardware',
+    );
     final boundaryId = await _insertProduct(
       store,
       title: 'Maximum safe price',
@@ -322,6 +325,11 @@ void main() {
       <Object?>[6, 'Item', '', 1, 'usd', 0, null],
       <Object?>[3, 'Item', '', 1, 'USD', 3, null],
       <Object?>[4, 'Item', '', 1, 'USD', 0, 404],
+      <Object?>[7, 'Item', '', 1, 'USD', 1, categoryId],
+      <Object?>[8, 'Item', 'Offer', 0, 'USD', 1, categoryId],
+      <Object?>[9, 'Item', 'Offer', 1, 'XXX', 1, categoryId],
+      <Object?>[10, 'Item', 'Offer', 1, 'USD', 1, null],
+      <Object?>[11, 'Item', 'Offer', 1, 'USD', 2, null],
     ]) {
       await expectLater(
         database.customStatement(
@@ -350,6 +358,20 @@ void main() {
       ),
       throwsA(_constraintFailure),
     );
+
+    final referencedItemId = await _insertProduct(
+      store,
+      title: 'Referenced item',
+      categoryId: categoryId,
+    );
+    await expectLater(
+      database.customStatement(
+        'DELETE FROM catalog_categories WHERE id = ?',
+        <Object?>[categoryId],
+      ),
+      throwsA(_constraintFailure),
+    );
+    expect(await store.getItem(referencedItemId), isNotNull);
   });
 }
 

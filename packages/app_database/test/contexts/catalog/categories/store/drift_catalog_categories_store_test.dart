@@ -33,11 +33,11 @@ void main() {
     final id = await store.insertCategory('Hardware');
     expect(await snapshots.moveNext(), isTrue);
     expect(snapshots.current.single.name, 'Hardware');
-    expect(snapshots.current.single.activeValue, 1);
+    expect(snapshots.current.single.isActive, isTrue);
 
     expect(await store.setCategoryActive(id: id, isActive: false), 1);
     expect(await snapshots.moveNext(), isTrue);
-    expect(snapshots.current.single.activeValue, 0);
+    expect(snapshots.current.single.isActive, isFalse);
 
     expect((await store.getCategory(id))?.name, 'Hardware');
     expect(await store.getCategory(404), isNull);
@@ -46,6 +46,19 @@ void main() {
   test('database constraints reject invalid category values', () async {
     await expectLater(
       store.insertCategory(''),
+      throwsA(
+        isA<SqliteException>().having(
+          (error) => error.resultCode,
+          'resultCode',
+          SqlError.SQLITE_CONSTRAINT,
+        ),
+      ),
+    );
+
+    await expectLater(
+      database.customStatement(
+        "INSERT INTO catalog_categories(name, is_active) VALUES ('Invalid', 2)",
+      ),
       throwsA(
         isA<SqliteException>().having(
           (error) => error.resultCode,

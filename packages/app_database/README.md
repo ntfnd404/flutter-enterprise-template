@@ -179,6 +179,13 @@ reset SQLite's sequence to the highest surviving row, the transition also
 preserves the legacy sequence explicitly. An ID issued before migration is
 never reused merely because its row was deleted.
 
+The current v2 snapshot correction is pre-release and intentionally keeps
+schema version `2`. A local development database created from the earlier v2
+baseline must be deleted and recreated; an already-opened v2 database cannot
+acquire changed constraints through a same-version upgrade. Once a schema
+version is released, the same kind of correction requires a new forward
+migration instead of rewriting its snapshot.
+
 Each transition is a top-level function using the generated schema for its
 target version. The registry runs the complete requested upgrade in one
 transaction with foreign-key enforcement disabled and validates
@@ -222,10 +229,21 @@ port `4444`.
 ## Persisted-type rules
 
 - Persist enum stable wire values, never Dart ordinal indices.
+- Author genuine binary columns as Drift `BOOLEAN` so current runtime rows and
+  store records use Dart `bool`. SQLite still persists Boolean values with
+  integer affinity, so versioned verifier helpers may expose the physical
+  `0`/`1` representation.
 - Protect mutable item snapshots with the explicit monotonic `revision` column;
   conditional detail/lifecycle updates increment it atomically.
 - Foreign keys are enabled for every connection, and upgraded databases run
   `foreign_key_check` before opening to application code.
+- Catalog item categories use `ON DELETE RESTRICT`: a category cannot disappear
+  while an item references it, because nulling that reference could invalidate
+  an already published or archived offer. Category deletion is not part of the
+  current narrow store contract.
+- Storage-level cross-column checks prevent published/archived Catalog offers
+  from contradicting their domain state. Domain reconstitution remains
+  authoritative for richer invariants.
 - Use triggers only for a technical invariant owned by one context. A
   cross-context workflow belongs to application coordination and may require an
   outbox or broker.

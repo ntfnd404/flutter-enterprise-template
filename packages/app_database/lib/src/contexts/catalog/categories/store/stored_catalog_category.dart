@@ -4,7 +4,7 @@ final class StoredCatalogCategory {
   const StoredCatalogCategory({
     required this.id,
     required this.name,
-    required this.activeValue,
+    required this.isActive,
   });
 
   /// Database-assigned identifier.
@@ -13,6 +13,6 @@ final class StoredCatalogCategory {
   /// Raw persisted name validated by the owning context.
   final String name;
 
-  /// Raw persisted activation flag.
-  final int activeValue;
+  /// Whether the category currently accepts publication and offer changes.
+  final bool isActive;
 }

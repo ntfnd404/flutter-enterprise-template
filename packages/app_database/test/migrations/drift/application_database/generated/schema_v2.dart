@@ -33,8 +33,9 @@ class CatalogCategories extends Table
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: false,
-    $customConstraints: 'NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))',
-    defaultValue: const CustomExpression('1'),
+    $customConstraints:
+        'NOT NULL DEFAULT TRUE CHECK (is_active IN (FALSE, TRUE))',
+    defaultValue: const CustomExpression('TRUE'),
   );
   @override
   List<GeneratedColumn> get $columns => [id, name, isActive];
@@ -288,7 +289,7 @@ class CatalogItems extends Table
     true,
     type: DriftSqlType.int,
     requiredDuringInsert: false,
-    $customConstraints: 'REFERENCES catalog_categories(id)ON DELETE SET NULL',
+    $customConstraints: 'REFERENCES catalog_categories(id)ON DELETE RESTRICT',
   );
   late final GeneratedColumn<int> revision = GeneratedColumn<int>(
     'revision',
@@ -362,6 +363,10 @@ class CatalogItems extends Table
     return CatalogItems(attachedDatabase, alias);
   }
 
+  @override
+  List<String> get customConstraints => const [
+    'CHECK(status_value = 0 OR(length(description) > 0 AND price_minor_units > 0 AND currency_code <> \'XXX\' AND category_id IS NOT NULL))',
+  ];
   @override
   bool get dontWriteConstraints => true;
 }
@@ -661,16 +666,6 @@ class DatabaseAtV2 extends GeneratedDatabase {
     catalogCategories,
     catalogItems,
   ];
-  @override
-  StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'catalog_categories',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('catalog_items', kind: UpdateKind.update)],
-    ),
-  ]);
   @override
   int get schemaVersion => 2;
 }

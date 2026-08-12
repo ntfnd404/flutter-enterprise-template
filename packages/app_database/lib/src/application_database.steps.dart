@@ -28,7 +28,9 @@ final class Schema2 extends i0.VersionedSchema {
       entityName: 'catalog_items',
       withoutRowId: false,
       isStrict: false,
-      tableConstraints: [],
+      tableConstraints: [
+        'CHECK(status_value = 0 OR(length(description) > 0 AND price_minor_units > 0 AND currency_code <> \'XXX\' AND category_id IS NOT NULL))',
+      ],
       columns: [
         _column_0,
         _column_3,
@@ -78,8 +80,9 @@ i1.GeneratedColumn<int> _column_2(String aliasedName) =>
       aliasedName,
       false,
       type: i1.DriftSqlType.int,
-      $customConstraints: 'NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1))',
-      defaultValue: const i1.CustomExpression('1'),
+      $customConstraints:
+          'NOT NULL DEFAULT TRUE CHECK (is_active IN (FALSE, TRUE))',
+      defaultValue: const i1.CustomExpression('TRUE'),
     );
 
 class Shape1 extends i0.VersionedTable {
@@ -157,7 +160,7 @@ i1.GeneratedColumn<int> _column_8(String aliasedName) =>
       aliasedName,
       true,
       type: i1.DriftSqlType.int,
-      $customConstraints: 'REFERENCES catalog_categories(id)ON DELETE SET NULL',
+      $customConstraints: 'REFERENCES catalog_categories(id)ON DELETE RESTRICT',
     );
 i1.GeneratedColumn<int> _column_9(String aliasedName) =>
     i1.GeneratedColumn<int>(
