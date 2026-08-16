@@ -56,9 +56,7 @@ linter:
     prefer_final_fields: warning
     prefer_final_in_for_each: warning
     prefer_final_locals: true
-    # Public constructor parameters intentionally keep names without a private
-    # underscore even when they initialize private implementation fields.
-    prefer_initializing_formals: false
+    prefer_initializing_formals: warning
 
     # Modern Dart idioms
     prefer_const_constructors: warning

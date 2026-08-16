@@ -41,6 +41,7 @@ The local Git history has accepted these autonomous batches:
 | `80827cf` | Pre-release Catalog persistence contract correction |
 | `d3e3544` | Catalog bounded context and package taxonomy |
 | `50b55e4` | Ordering persistence schema v3 |
+| `f6b2243` | Consolidated Architecture Source of Truth v8 |
 
 The accepted repository therefore contains the `bounded_contexts/libraries`
 package taxonomy, a shared physical database, the Catalog business context,
@@ -53,38 +54,7 @@ developed and tested together. Ordering, DI, diagnostics, UI kit, routing,
 presentation, startup, integration scenarios, and platform migration remain
 review candidates until their own commits.
 
-## Current review: consolidated documentation baseline
-
-Accept one documentation-only snapshot that consolidates Architecture Source
-of Truth v8 and removes competing v7-era contracts.
-
-It includes:
-
-- `doc/architecture.md` as the normative target;
-- this roadmap as the accepted-state and execution ledger;
-- `doc/code_style.md`;
-- `doc/dependency_lifecycle.md`;
-- root README;
-- AGENTS and CLAUDE contributor instructions;
-- links to and retains the already accepted package-taxonomy and
-  shared-database ADR rationale records;
-- the MIT license.
-
-Repository documentation is maintained in English. ADRs record rationale and
-consequences but do not override architecture. `architecture/context_map.yaml`
-remains an accepted-state artifact and therefore stays Catalog-only in this
-batch. Runtime, manifests, Makefile, platform projects, and the Context Map are
-not part of the documentation snapshot.
-
-After this baseline, every architecture phase updates the affected canonical
-documents in the same commit. There is no later catch-all canonical-docs phase.
-
-**Acceptance:** links are valid; old AppBootstrap, `core/diagnostics`, route
-adapter, event, consistency, package-layout, and review-order statements are
-removed; the accepted commit ledger is correct; `git diff --check` is green;
-and the staged snapshot contains documentation only.
-
-## Next review: Flutter 3.47 platform and toolchain baseline
+## Current review: Flutter 3.47 platform and toolchain baseline
 
 Accept the template migration to Flutter 3.47.0 and Dart 3.13.0 independently
 from business or runtime architecture:
@@ -100,6 +70,14 @@ from business or runtime architecture:
 - accept only compatible lint and package-version corrections belonging to
   this toolchain snapshot.
 
+The verified local toolchain is Flutter 3.47.0 stable, Dart 3.13.0, JDK
+17.0.20, Android SDK 36.1, Xcode 26.3, and CocoaPods 1.16.2. The migration is
+compared against a fresh Flutter 3.47 application while preserving authored
+application code and the existing Apple development team. The empty template
+does not declare `cupertino_icons`; its Web font warning is therefore accepted
+instead of adding an unused dependency. Unresolvable transitive updates are
+not forced.
+
 The root manifest must not gain direct Ordering, UI kit, routing, or startup
 dependencies before their owning phases. A fresh Flutter 3.47 application is
 the comparison baseline, but authored application code is never overwritten
@@ -110,7 +88,7 @@ tests are green; available Web, Android, iOS-simulator, and macOS builds are
 run in proportion to the changed platform files; warnings are reviewed; and
 the staged snapshot contains no business or runtime draft.
 
-## Ordering bounded context
+## Next review: Ordering bounded context
 
 Accept the pure-Dart downstream context after the platform baseline:
 

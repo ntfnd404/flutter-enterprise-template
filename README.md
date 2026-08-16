@@ -18,8 +18,8 @@ mixed working tree is not an accepted scaffold capability.
 
 ## Requirements
 
-- Target Flutter stable baseline: Flutter 3.47.0.
-- Target Dart constraint: `^3.13.0`; Flutter 3.47.0 bundles Dart 3.13.0.
+- Flutter 3.47.0 stable.
+- Dart constraint `^3.13.0`; Flutter 3.47.0 bundles Dart 3.13.0.
 - JDK 17 for Android Gradle builds.
 - GNU Make for the convenience commands below, or the equivalent Flutter and
   Dart commands from the `Makefile`.
