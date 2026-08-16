@@ -6,6 +6,9 @@ domains:
       - name: catalog
         type: core
 
+      - name: ordering
+        type: core
+
 bounded_contexts:
   - name: catalog
     package: catalog
@@ -13,4 +16,20 @@ bounded_contexts:
       - domain: commerce
         subdomain: catalog
 
-dependencies: []
+  - name: ordering
+    package: ordering
+    models:
+      - domain: commerce
+        subdomain: ordering
+
+dependencies:
+  - upstream: catalog
+    downstream: ordering
+    relationship: customer_supplier
+    public_contract: catalog_product_offers
+    contract_pattern: published_language
+    downstream_translation: anti_corruption_layer
+    integration_mode: synchronous_query
+    cross_context_atomicity: none
+    consistency_model: point_in_time_snapshot
+    runtime_dependency: ordering_offer_commands_require_catalog

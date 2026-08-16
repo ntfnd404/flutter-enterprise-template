@@ -1,0 +1,17 @@
+name: ordering
+description: Ordering bounded context for the template reference application.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+resolution: workspace
+
+dependencies:
+  app_database: 0.1.0
+  catalog: 0.1.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  test: 1.31.1

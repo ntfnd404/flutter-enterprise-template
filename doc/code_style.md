@@ -28,6 +28,12 @@ Application lifecycle and placement decisions belong in
 ## Formatting and imports
 
 - Use `dart format` with the configured 80-character page width.
+- Separate a `return` from any preceding statement in the same block with one
+  blank line. Do not add a leading blank line when `return` is the first or
+  only statement in that block. This convention matches DCM's
+  [`newline-before-return`](https://dcm.dev/docs/rules/common/newline-before-return/)
+  rule and remains mandatory even when DCM is not part of the project
+  toolchain.
 - Use `package:template/...` imports in production `lib/` code.
 - Use point imports for app-internal subsystems. Do not add a nested barrel
   unless it represents a reviewed API boundary with real external consumers.
@@ -37,6 +43,20 @@ Application lifecycle and placement decisions belong in
   history. A short placement-oriented snippet in DartDoc or an extension point
   is allowed when it teaches the documented scaffold contract; detailed SDK
   examples belong in `doc/dependency_lifecycle.md`.
+
+```dart
+final result = calculateResult();
+
+return result;
+```
+
+An immediate return needs no artificial leading whitespace:
+
+```dart
+if (!isSupported) {
+  return;
+}
+```
 
 ## Types and APIs
 

@@ -42,55 +42,22 @@ The local Git history has accepted these autonomous batches:
 | `d3e3544` | Catalog bounded context and package taxonomy |
 | `50b55e4` | Ordering persistence schema v3 |
 | `f6b2243` | Consolidated Architecture Source of Truth v8 |
+| `0b61dd6` | Flutter 3.47 platform and toolchain baseline |
 
 The accepted repository therefore contains the `bounded_contexts/libraries`
 package taxonomy, a shared physical database, the Catalog business context,
-and the Ordering persistence seam. It does not yet contain an accepted
-Ordering business package or accepted application runtime built on these
-facades.
+the Ordering persistence seam, and the Flutter 3.47/Dart 3.13 platform
+baseline. It does not yet contain an accepted Ordering business package or
+accepted application runtime built on these facades.
 
 The working tree contains later implementations so adjacent APIs can be
 developed and tested together. Ordering, DI, diagnostics, UI kit, routing,
-presentation, startup, integration scenarios, and platform migration remain
-review candidates until their own commits.
+presentation, startup, and integration scenarios remain review candidates
+until their own commits.
 
-## Current review: Flutter 3.47 platform and toolchain baseline
+## Current review: Ordering bounded context
 
-Accept the template migration to Flutter 3.47.0 and Dart 3.13.0 independently
-from business or runtime architecture:
-
-- refresh `.metadata` from the Flutter 3.47 template;
-- review Android Gradle 9.3.1, AGP 9.1.0, Kotlin 2.4.0, and JDK 17 settings;
-- retain the documented temporary legacy AGP DSL bridge only while required by
-  the Flutter Gradle plugin;
-- review current iOS/macOS generated-plugin Swift package integration and
-  deployment targets;
-- review Windows template safety updates;
-- accept Widget Preview and workspace build ignore rules;
-- accept only compatible lint and package-version corrections belonging to
-  this toolchain snapshot.
-
-The verified local toolchain is Flutter 3.47.0 stable, Dart 3.13.0, JDK
-17.0.20, Android SDK 36.1, Xcode 26.3, and CocoaPods 1.16.2. The migration is
-compared against a fresh Flutter 3.47 application while preserving authored
-application code and the existing Apple development team. The empty template
-does not declare `cupertino_icons`; its Web font warning is therefore accepted
-instead of adding an unused dependency. Unresolvable transitive updates are
-not forced.
-
-The root manifest must not gain direct Ordering, UI kit, routing, or startup
-dependencies before their owning phases. A fresh Flutter 3.47 application is
-the comparison baseline, but authored application code is never overwritten
-by template regeneration.
-
-**Acceptance:** Flutter doctor/toolchain versions are recorded; analysis and
-tests are green; available Web, Android, iOS-simulator, and macOS builds are
-run in proportion to the changed platform files; warnings are reviewed; and
-the staged snapshot contains no business or runtime draft.
-
-## Next review: Ordering bounded context
-
-Accept the pure-Dart downstream context after the platform baseline:
+Accept the pure-Dart downstream context:
 
 - persistent multi-line Order aggregate;
 - Ordering application facade and repository adapter;
@@ -112,7 +79,7 @@ This snapshot contains no application DI or Flutter UI. The root application
 does not add a direct Ordering dependency until the DI phase creates its first
 production import.
 
-## App-owned dependency graph
+## Next review: App-owned dependency graph
 
 The existing DI code is a design candidate, not a pre-approved implementation.
 Review behavior before staging code and retain only types whose responsibilities

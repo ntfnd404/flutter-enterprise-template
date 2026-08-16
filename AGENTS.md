@@ -80,6 +80,9 @@ require a Flutter device.
   without a reviewed external API boundary.
 - Name authored files and directories with `lowercase_with_underscores`, except
   for ecosystem-standard root files such as `README.md` and `AGENTS.md`.
+- Separate `return` from a preceding statement in the same block with one blank
+  line. Add no leading blank line when `return` is the first or only statement
+  in that block.
 - Prefer composition over inheritance.
 - Keep Environment and DI graph primitives Flutter-free. Isolate a required
   Flutter plugin behind its concrete `app/di/modules` platform adapter.

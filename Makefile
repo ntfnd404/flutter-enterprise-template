@@ -32,6 +32,7 @@ test:
 	$(FLUTTER) test
 	cd packages/libraries/app_database && $(DART) test
 	cd packages/bounded_contexts/catalog && $(DART) test
+	cd packages/bounded_contexts/ordering && $(DART) test
 
 generate-database:
 	cd packages/libraries/app_database && $(DART) run build_runner build
@@ -58,6 +59,7 @@ docs:
 	$(DART) doc --dry-run
 	$(DART) doc --dry-run packages/libraries/app_database
 	$(DART) doc --dry-run packages/bounded_contexts/catalog
+	$(DART) doc --dry-run packages/bounded_contexts/ordering
 
 check: analyze test check-config docs
 

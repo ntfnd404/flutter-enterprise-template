@@ -96,9 +96,10 @@ packages/
     └── ui_kit/               # Material theme and semantic design tokens
 ```
 
-This tree shows the architectural target. Catalog and AppDatabase are already
-accepted; Ordering, app-owned DI and diagnostics, UI kit, presentation, and
-startup are accepted only by their ordered roadmap patches.
+This tree shows the architectural target. Catalog, AppDatabase, and the
+Flutter 3.47 platform baseline are already accepted. Ordering is the current
+isolated review; app-owned DI and diagnostics, UI kit, presentation, and
+startup are accepted only by their later ordered roadmap patches.
 
 `packages` is the Pub workspace container, not an application layer.
 `bounded_contexts` contains business-model boundaries; `libraries` is a
