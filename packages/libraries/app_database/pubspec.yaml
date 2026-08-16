@@ -1,0 +1,22 @@
+name: app_database
+description: Shared Drift database host for the template application.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.13.0
+
+resolution: workspace
+
+dependencies:
+  characters: 1.4.1
+  drift: 2.34.3
+  path: 1.9.1
+  sqlite3: 3.5.1
+
+dev_dependencies:
+  build_runner: 2.16.0
+  crypto: 3.0.7
+  drift_dev: 2.34.5
+  flutter_lints: ^6.0.0
+  test: 1.31.1

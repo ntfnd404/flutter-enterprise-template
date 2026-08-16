@@ -3,6 +3,12 @@ include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
     - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
 
   language:
     strict-casts: true
@@ -30,7 +36,6 @@ linter:
     close_sinks: true
     unawaited_futures: true
     unnecessary_async: true
-    unnecessary_await_in_return: true
 
     # Correctness and defensive control flow
     literal_only_boolean_expressions: true

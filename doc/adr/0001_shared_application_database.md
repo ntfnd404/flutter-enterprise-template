@@ -14,7 +14,7 @@ and migration ownership undefined when a second context needed the same file.
 
 ## Decision
 
-`packages/app_database` owns the physical connection, complete schema,
+`packages/libraries/app_database` owns the physical connection, complete schema,
 migration chain, generated rows, and private DAOs. It is technical application
 infrastructure, not a bounded context and therefore is not listed as a context
 in `architecture/context_map.yaml`.
@@ -22,9 +22,10 @@ in `architecture/context_map.yaml`.
 The context map records business context-to-context relationships. The
 technical dependency on `app_database` is instead constrained by architecture
 guards: context domain/application code and presentation cannot import it, and
-context data/composition may use only its narrow store entrypoints.
+context infrastructure/composition may use only its narrow store entrypoints.
 
-Each context receives a separate narrow store entrypoint. A context data adapter
+Each context receives a separate narrow store entrypoint. A context
+infrastructure adapter
 maps store records and failures into its own domain/application types. Context
 application APIs, presentation, and `AppDependencies` do not expose stores,
 DAOs, generated rows, or the physical database.
@@ -35,7 +36,7 @@ with owned resources is registered after the database, so LIFO teardown closes
 the context before the shared connection.
 
 Context-owned persistence is grouped under
-`src/contexts/<context>/<cluster>`. A cluster separates authored table files,
+`src/persistence/<owner>/<cluster>`. A cluster separates authored table files,
 optional named queries, private DAOs, and narrow stores. The root `src/schema`
 contains versioned migration snapshots rather than authored table definitions.
 Logical ownership remains with the context even though schema migration and

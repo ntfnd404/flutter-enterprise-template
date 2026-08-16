@@ -4,10 +4,11 @@ publish_to: 'none'
 version: 0.1.0+1
 
 environment:
-  sdk: ^3.12.2
+  sdk: ^3.13.0
 
 workspace:
-  - packages/app_database
+  - packages/bounded_contexts/*
+  - packages/libraries/*
 
 dependencies:
   app_database: 0.1.0

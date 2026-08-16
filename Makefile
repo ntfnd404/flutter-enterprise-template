@@ -30,13 +30,14 @@ analyze:
 
 test:
 	$(FLUTTER) test
-	cd packages/app_database && $(DART) test
+	cd packages/libraries/app_database && $(DART) test
+	cd packages/bounded_contexts/catalog && $(DART) test
 
 generate-database:
-	cd packages/app_database && $(DART) run build_runner build
+	cd packages/libraries/app_database && $(DART) run build_runner build
 
 database-schema:
-	cd packages/app_database && $(DART) run drift_dev make-migrations
+	cd packages/libraries/app_database && $(DART) run drift_dev make-migrations
 
 test-database-web:
 	$(FLUTTER) drive \
@@ -55,7 +56,8 @@ check-env:
 
 docs:
 	$(DART) doc --dry-run
-	$(DART) doc --dry-run packages/app_database
+	$(DART) doc --dry-run packages/libraries/app_database
+	$(DART) doc --dry-run packages/bounded_contexts/catalog
 
 check: analyze test check-config docs
 

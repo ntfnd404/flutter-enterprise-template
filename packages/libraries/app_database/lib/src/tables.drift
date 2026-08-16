@@ -1,0 +1,2 @@
+import 'persistence/catalog/categories/tables/catalog_categories.drift';
+import 'persistence/catalog/items/tables/catalog_items.drift';

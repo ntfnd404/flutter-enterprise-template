@@ -50,7 +50,10 @@ void main() {
     expect(persisted.revision, 1);
 
     for (final item in items) {
-      await reopened.stores.catalog.items.deleteItem(item.id);
+      await reopened.stores.catalog.items.deleteDraft(
+        id: item.id,
+        expectedRevision: item.revision,
+      );
     }
   });
 }

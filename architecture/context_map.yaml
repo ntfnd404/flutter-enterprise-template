@@ -1,0 +1,16 @@
+version: 1
+
+domains:
+  - name: commerce
+    subdomains:
+      - name: catalog
+        type: core
+
+bounded_contexts:
+  - name: catalog
+    package: catalog
+    models:
+      - domain: commerce
+        subdomain: catalog
+
+dependencies: []
