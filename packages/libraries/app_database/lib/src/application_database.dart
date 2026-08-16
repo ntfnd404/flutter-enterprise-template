@@ -1,6 +1,7 @@
 import 'package:app_database/src/migrations/application_database_migrations.dart';
 import 'package:app_database/src/persistence/catalog/categories/dao/catalog_categories_dao.dart';
 import 'package:app_database/src/persistence/catalog/items/dao/catalog_items_dao.dart';
+import 'package:app_database/src/persistence/ordering/orders/dao/ordering_orders_dao.dart';
 import 'package:drift/drift.dart';
 
 part 'application_database.g.dart';
@@ -11,6 +12,7 @@ part 'application_database.g.dart';
   daos: <Type>[
     CatalogCategoriesDao,
     CatalogItemsDao,
+    OrderingOrdersDao,
   ],
 )
 final class ApplicationDatabase extends _$ApplicationDatabase {
@@ -18,7 +20,7 @@ final class ApplicationDatabase extends _$ApplicationDatabase {
   ApplicationDatabase(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(

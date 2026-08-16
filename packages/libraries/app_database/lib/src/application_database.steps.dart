@@ -170,8 +170,237 @@ i1.GeneratedColumn<int> _column_9(String aliasedName) =>
           'NOT NULL DEFAULT 0 CHECK (revision BETWEEN 0 AND 9007199254740991)',
       defaultValue: const i1.CustomExpression('0'),
     );
+
+final class Schema3 extends i0.VersionedSchema {
+  Schema3({required super.database}) : super(version: 3);
+  @override
+  late final List<i1.DatabaseSchemaEntity> entities = [
+    orderingOrders,
+    orderingOrderLines,
+    catalogCategories,
+    catalogItems,
+  ];
+  late final Shape2 orderingOrders = Shape2(
+    source: i0.VersionedTable(
+      entityName: 'ordering_orders',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'CHECK((total_minor_units IS NULL AND currency_code IS NULL)OR(total_minor_units IS NOT NULL AND currency_code IS NOT NULL))',
+        'CHECK((status_value = 0 AND placed_at_utc_milliseconds IS NULL AND cancelled_at_utc_milliseconds IS NULL)OR(status_value = 1 AND total_minor_units IS NOT NULL AND currency_code IS NOT NULL AND placed_at_utc_milliseconds IS NOT NULL AND cancelled_at_utc_milliseconds IS NULL)OR(status_value = 2 AND cancelled_at_utc_milliseconds IS NOT NULL AND(placed_at_utc_milliseconds IS NULL OR(total_minor_units IS NOT NULL AND currency_code IS NOT NULL))))',
+      ],
+      columns: [
+        _column_0,
+        _column_7,
+        _column_10,
+        _column_11,
+        _column_9,
+        _column_12,
+        _column_13,
+        _column_14,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape3 orderingOrderLines = Shape3(
+    source: i0.VersionedTable(
+      entityName: 'ordering_order_lines',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: ['PRIMARY KEY(order_id, catalog_product_id)'],
+      columns: [
+        _column_15,
+        _column_16,
+        _column_17,
+        _column_18,
+        _column_19,
+        _column_20,
+        _column_21,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape0 catalogCategories = Shape0(
+    source: i0.VersionedTable(
+      entityName: 'catalog_categories',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [],
+      columns: [_column_0, _column_1, _column_2],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+  late final Shape1 catalogItems = Shape1(
+    source: i0.VersionedTable(
+      entityName: 'catalog_items',
+      withoutRowId: false,
+      isStrict: false,
+      tableConstraints: [
+        'CHECK(status_value = 0 OR(length(description) > 0 AND price_minor_units > 0 AND currency_code <> \'XXX\' AND category_id IS NOT NULL))',
+      ],
+      columns: [
+        _column_0,
+        _column_3,
+        _column_4,
+        _column_5,
+        _column_6,
+        _column_7,
+        _column_8,
+        _column_9,
+      ],
+      attachedDatabase: database,
+    ),
+    alias: null,
+  );
+}
+
+class Shape2 extends i0.VersionedTable {
+  Shape2({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<int> get id =>
+      columnsByName['id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get statusValue =>
+      columnsByName['status_value']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get totalMinorUnits =>
+      columnsByName['total_minor_units']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get currencyCode =>
+      columnsByName['currency_code']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get revision =>
+      columnsByName['revision']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get createdAtUtcMilliseconds =>
+      columnsByName['created_at_utc_milliseconds']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get placedAtUtcMilliseconds =>
+      columnsByName['placed_at_utc_milliseconds']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get cancelledAtUtcMilliseconds =>
+      columnsByName['cancelled_at_utc_milliseconds']!
+          as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<int> _column_10(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'total_minor_units',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'CHECK (total_minor_units IS NULL OR total_minor_units BETWEEN 1 AND 9007199254740991)',
+    );
+i1.GeneratedColumn<String> _column_11(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'currency_code',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'CHECK (currency_code IS NULL OR(currency_code GLOB \'[A-Z][A-Z][A-Z]\' AND currency_code <> \'XXX\'))',
+    );
+i1.GeneratedColumn<int> _column_12(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'created_at_utc_milliseconds',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL CHECK (created_at_utc_milliseconds BETWEEN 0 AND 8640000000000000)',
+    );
+i1.GeneratedColumn<int> _column_13(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'placed_at_utc_milliseconds',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'CHECK (placed_at_utc_milliseconds IS NULL OR placed_at_utc_milliseconds BETWEEN 0 AND 8640000000000000)',
+    );
+i1.GeneratedColumn<int> _column_14(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'cancelled_at_utc_milliseconds',
+      aliasedName,
+      true,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'CHECK (cancelled_at_utc_milliseconds IS NULL OR cancelled_at_utc_milliseconds BETWEEN 0 AND 8640000000000000)',
+    );
+
+class Shape3 extends i0.VersionedTable {
+  Shape3({required super.source, required super.alias}) : super.aliased();
+  i1.GeneratedColumn<int> get orderId =>
+      columnsByName['order_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get catalogProductId =>
+      columnsByName['catalog_product_id']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get productTitleSnapshot =>
+      columnsByName['product_title_snapshot']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get unitPriceMinorUnits =>
+      columnsByName['unit_price_minor_units']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<String> get currencyCode =>
+      columnsByName['currency_code']! as i1.GeneratedColumn<String>;
+  i1.GeneratedColumn<int> get quantity =>
+      columnsByName['quantity']! as i1.GeneratedColumn<int>;
+  i1.GeneratedColumn<int> get catalogRevision =>
+      columnsByName['catalog_revision']! as i1.GeneratedColumn<int>;
+}
+
+i1.GeneratedColumn<int> _column_15(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'order_id',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints:
+          'NOT NULL REFERENCES ordering_orders(id)ON DELETE CASCADE',
+    );
+i1.GeneratedColumn<int> _column_16(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'catalog_product_id',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints: 'NOT NULL CHECK (catalog_product_id > 0)',
+    );
+i1.GeneratedColumn<String> _column_17(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'product_title_snapshot',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL CHECK (length(product_title_snapshot) > 0)',
+    );
+i1.GeneratedColumn<int> _column_18(
+  String aliasedName,
+) => i1.GeneratedColumn<int>(
+  'unit_price_minor_units',
+  aliasedName,
+  false,
+  type: i1.DriftSqlType.int,
+  $customConstraints:
+      'NOT NULL CHECK (unit_price_minor_units BETWEEN 1 AND 9007199254740991)',
+);
+i1.GeneratedColumn<String> _column_19(String aliasedName) =>
+    i1.GeneratedColumn<String>(
+      'currency_code',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.string,
+      $customConstraints: 'NOT NULL CHECK (currency_code GLOB \'[A-Z][A-Z][A-Z]\' AND currency_code <> \'XXX\')',
+    );
+i1.GeneratedColumn<int> _column_20(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'quantity',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints:
+          'NOT NULL CHECK (quantity BETWEEN 1 AND 9007199254740991)',
+    );
+i1.GeneratedColumn<int> _column_21(String aliasedName) =>
+    i1.GeneratedColumn<int>(
+      'catalog_revision',
+      aliasedName,
+      false,
+      type: i1.DriftSqlType.int,
+      $customConstraints:
+          'NOT NULL CHECK (catalog_revision BETWEEN 0 AND 9007199254740991)',
+    );
 i0.MigrationStepWithVersion migrationSteps({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
+  required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
 }) {
   return (currentVersion, database) async {
     switch (currentVersion) {
@@ -180,6 +409,11 @@ i0.MigrationStepWithVersion migrationSteps({
         final migrator = i1.Migrator(database, schema);
         await from1To2(migrator, schema);
         return 2;
+      case 2:
+        final schema = Schema3(database: database);
+        final migrator = i1.Migrator(database, schema);
+        await from2To3(migrator, schema);
+        return 3;
       default:
         throw ArgumentError.value('Unknown migration from $currentVersion');
     }
@@ -188,6 +422,7 @@ i0.MigrationStepWithVersion migrationSteps({
 
 i1.OnUpgrade stepByStep({
   required Future<void> Function(i1.Migrator m, Schema2 schema) from1To2,
+  required Future<void> Function(i1.Migrator m, Schema3 schema) from2To3,
 }) => i0.VersionedSchema.stepByStepHelper(
-  step: migrationSteps(from1To2: from1To2),
+  step: migrationSteps(from1To2: from1To2, from2To3: from2To3),
 );

@@ -43,6 +43,7 @@ void main() {
   test('application database public APIs hide provider internals', () {
     final contextContents = <String>[
       'packages/libraries/app_database/lib/stores/catalog.dart',
+      'packages/libraries/app_database/lib/stores/ordering.dart',
     ].map((path) => File(path).readAsStringSync()).join('\n');
     final compositionContents = File(
       'packages/libraries/app_database/lib/app_database_composition.dart',
@@ -54,6 +55,9 @@ void main() {
     expect(publicContents, contains('app_database_module.dart'));
     expect(publicContents, contains('app_database_stores.dart'));
     expect(contextContents, contains('catalog_database_stores.dart'));
+    expect(publicContents, contains('ordering_orders_store.dart'));
+    expect(contextContents, contains('ordering_database_stores.dart'));
+    expect(publicContents, contains('stored_order.dart'));
     expect(publicContents, isNot(contains('application_database.dart')));
     expect(publicContents, isNot(contains('/dao/')));
     expect(contextContents, isNot(contains('/connection/')));
@@ -67,6 +71,7 @@ void main() {
 
     expect(storeEntrypoints, <String>[
       'packages/libraries/app_database/lib/stores/catalog.dart',
+      'packages/libraries/app_database/lib/stores/ordering.dart',
     ]);
     expect(
       Directory('packages/libraries/app_database/lib/contexts').existsSync(),
@@ -84,14 +89,12 @@ void main() {
       ).existsSync(),
       isFalse,
     );
-    final orderingDirectory = Directory(
-      'packages/libraries/app_database/lib/src/persistence/ordering',
+    expect(
+      File(
+        'packages/libraries/app_database/lib/app_database_ordering.dart',
+      ).existsSync(),
+      isFalse,
     );
-    final orderingSources = orderingDirectory.existsSync()
-        ? orderingDirectory.listSync(recursive: true).whereType<File>().toList()
-        : const <File>[];
-
-    expect(orderingSources, isEmpty);
   });
 
   test('application database remains app and Flutter neutral', () {
@@ -156,14 +159,24 @@ void main() {
       'packages/libraries/app_database/lib/src/persistence/catalog/'
       'catalog_database_stores.dart',
     ).readAsStringSync();
+    final orderingStores = File(
+      'packages/libraries/app_database/lib/src/persistence/ordering/'
+      'ordering_database_stores.dart',
+    ).readAsStringSync();
     final compositionEntrypoint = File(
       'packages/libraries/app_database/lib/app_database_composition.dart',
     ).readAsStringSync();
     final catalogEntrypoint = File(
       'packages/libraries/app_database/lib/stores/catalog.dart',
     ).readAsStringSync();
+    final orderingEntrypoint = File(
+      'packages/libraries/app_database/lib/stores/ordering.dart',
+    ).readAsStringSync();
     final databaseSources = dartFiles(
       'packages/libraries/app_database/lib',
+    ).map((file) => file.readAsStringSync()).join('\n');
+    final acceptedContextSources = dartFiles(
+      'packages/bounded_contexts/catalog/lib',
     ).map((file) => file.readAsStringSync()).join('\n');
 
     expect(module, contains('AppDatabaseStores? _stores'));
@@ -171,15 +184,23 @@ void main() {
     expect(module, contains('createAppDatabaseStores(database)'));
     expect(module, isNot(contains('CatalogItemsStore')));
     expect(module, isNot(contains('CatalogCategoriesStore')));
+    expect(module, isNot(contains('OrderingOrdersStore')));
     expect(module, isNot(contains('DriftCatalog')));
+    expect(module, isNot(contains('DriftOrdering')));
     expect(databaseSources, isNot(contains('catalogItemsStore')));
     expect(databaseSources, isNot(contains('catalogCategoriesStore')));
+    expect(databaseSources, isNot(contains('orderingOrdersStore')));
 
     expect(rootStores, contains('final CatalogDatabaseStores catalog'));
-    expect(rootStores, isNot(contains('OrderingDatabaseStores')));
+    expect(rootStores, contains('final OrderingDatabaseStores ordering'));
     expect(catalogStores, contains('final CatalogItemsStore items'));
     expect(catalogStores, contains('final CatalogCategoriesStore categories'));
-    for (final source in <String>[rootStores, catalogStores]) {
+    expect(orderingStores, contains('final OrderingOrdersStore orders'));
+    for (final source in <String>[
+      rootStores,
+      catalogStores,
+      orderingStores,
+    ]) {
       expect(source, isNot(contains('Map<Type')));
       expect(source, isNot(contains('operator []')));
       expect(source, isNot(contains('get<T>')));
@@ -188,7 +209,10 @@ void main() {
       expect(source, isNot(contains('ValueNotifier')));
     }
 
-    expect(compositionEntrypoint, contains('show AppDatabaseStores'));
+    expect(
+      compositionEntrypoint,
+      contains('show AppDatabaseStores'),
+    );
     expect(
       compositionEntrypoint,
       isNot(contains('createAppDatabaseStores')),
@@ -198,6 +222,14 @@ void main() {
       catalogEntrypoint,
       isNot(contains('createCatalogDatabaseStores')),
     );
+    expect(orderingEntrypoint, contains('show OrderingDatabaseStores'));
+    expect(
+      orderingEntrypoint,
+      isNot(contains('createOrderingDatabaseStores')),
+    );
+    expect(acceptedContextSources, isNot(contains('AppDatabaseStores')));
+    expect(acceptedContextSources, isNot(contains('CatalogDatabaseStores')));
+    expect(acceptedContextSources, isNot(contains('OrderingDatabaseStores')));
   });
 
   test('owned persistence slices use the declared cluster structure', () {
@@ -300,6 +332,7 @@ void main() {
       unorderedEquals(<String>[
         '$migrationsRoot/application_database_migrations.dart',
         '$migrationsRoot/v1_to_v2_catalog_products.dart',
+        '$migrationsRoot/v2_to_v3_ordering_orders.dart',
       ]),
     );
     expect(
@@ -314,8 +347,8 @@ void main() {
     );
     expect(applicationDatabase, isNot(contains('from1To2:')));
     expect(applicationDatabase, isNot(contains('from2To3:')));
-    expect(applicationDatabase, contains('schemaVersion => 2'));
-    expect(applicationDatabase, isNot(contains('OrderingOrdersDao')));
+    expect(applicationDatabase, contains('schemaVersion => 3'));
+    expect(applicationDatabase, contains('OrderingOrdersDao'));
     expect(contextMigrationDirectories, isEmpty);
   });
 
@@ -357,5 +390,39 @@ void main() {
     expect(catalogSources, isNot(contains('setItemStatus')));
     expect(catalogSources, isNot(contains('deleteItem')));
     expect(catalogSources, isNot(contains('expectedStatusValue')));
+  });
+
+  test('Ordering persistence has no cross-context SQL foreign key', () {
+    final lines = File(
+      'packages/libraries/app_database/lib/src/persistence/ordering/orders/tables/'
+      'order_lines.drift',
+    ).readAsStringSync();
+
+    expect(lines, contains('REFERENCES ordering_orders(id)'));
+    expect(lines, isNot(contains('REFERENCES catalog_')));
+    expect(lines, isNot(contains('JOIN catalog_')));
+  });
+
+  test('Ordering persistence exposes intent-specific conditional writes', () {
+    final store = File(
+      'packages/libraries/app_database/lib/src/persistence/ordering/orders/store/'
+      'ordering_orders_store.dart',
+    ).readAsStringSync();
+    final storedLine = File(
+      'packages/libraries/app_database/lib/src/persistence/ordering/orders/store/'
+      'stored_order_line.dart',
+    ).readAsStringSync();
+    final orderingSources = dartFiles(
+      'packages/libraries/app_database/lib/src/persistence/ordering',
+    ).map((file) => file.readAsStringSync()).join('\n');
+
+    expect(store, contains('replaceDraftLines'));
+    expect(store, contains('placeOrder'));
+    expect(store, contains('cancelOrder'));
+    expect(store, contains('required int expectedRevision'));
+    expect(store, isNot(contains('expectedStatusValue')));
+    expect(storedLine, isNot(contains('final int orderId')));
+    expect(orderingSources, isNot(contains('setOrderStatus')));
+    expect(orderingSources, isNot(contains('deleteOrder')));
   });
 }

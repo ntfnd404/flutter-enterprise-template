@@ -1,2 +1,3 @@
 import 'persistence/catalog/categories/tables/catalog_categories.drift';
 import 'persistence/catalog/items/tables/catalog_items.drift';
+import 'persistence/ordering/orders/tables/ordering_orders_tables.drift';

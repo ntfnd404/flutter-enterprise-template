@@ -1,4 +1,5 @@
 import 'package:app_database/src/persistence/catalog/failures/catalog_store_exception.dart';
+import 'package:app_database/src/sqlite/sqlite_failure_translation.dart';
 import 'package:sqlite3/common.dart';
 
 /// Translates only temporary SQLite contention into an expected store failure.
@@ -11,12 +12,10 @@ Never throwCatalogSqliteFailure({
   required SqliteException? sqliteError,
   required StackTrace stackTrace,
 }) {
-  final isContention = switch (sqliteError?.resultCode) {
-    SqlError.SQLITE_BUSY || SqlError.SQLITE_LOCKED => true,
-    _ => false,
-  };
-  if (isContention) {
-    Error.throwWithStackTrace(const CatalogStoreException(), stackTrace);
-  }
-  Error.throwWithStackTrace(error, stackTrace);
+  throwSqliteFailure(
+    error: error,
+    sqliteError: sqliteError,
+    stackTrace: stackTrace,
+    contentionFailure: CatalogStoreException.new,
+  );
 }

@@ -13,6 +13,9 @@ business bounded context or a DDD Shared Kernel.
 - `stores/catalog.dart` exposes only Catalog's narrow item/category
   stores, typed context bundle, provider-neutral records, and expected
   temporary store failure.
+- `stores/ordering.dart` exposes only Ordering's aggregate store,
+  typed context bundle, provider-neutral records, and expected temporary store
+  failure.
 - Every later persistence owner receives its own `stores/<owner>.dart`
   entrypoint.
 
@@ -20,6 +23,12 @@ The package never exports `ApplicationDatabase`, executors, DAOs, generated
 rows, companions, or Drift-specific storage enums. A context maps its borrowed
 store into context-owned repository and application APIs. Presentation receives
 only the application facade.
+
+The Ordering store is a trusted infrastructure seam rather than a second
+domain model. Its caller supplies a domain-validated aggregate snapshot. SQL
+defensively enforces representable column, lifecycle, uniqueness, and foreign
+key constraints, while line-count, grapheme, cross-line currency, and calculated
+total rules remain authoritative in Ordering.
 
 ## Source layout
 
@@ -34,7 +43,7 @@ lib/src/
 ├── migrations/                         # authored global version transitions
 ├── schema/application_database/        # versioned migration snapshots
 └── persistence/
-    └── catalog/
+    ├── catalog/
         ├── catalog_database_stores.dart # Catalog store view and assembly
         ├── failures/                    # context-wide store failures/translation
         ├── items/
@@ -46,29 +55,35 @@ lib/src/
             ├── tables/
             ├── dao/
             └── store/                   # independent category seam
+    └── ordering/
+        ├── ordering_database_stores.dart # Ordering store view and assembly
+        └── orders/
+            ├── tables/                  # cluster manifest, parent and lines
+            ├── dao/                     # private aggregate transactions
+            └── store/                   # narrow Ordering seam
 ```
 
-Public store entrypoints are grouped separately under `lib/stores`. This keeps
-a growing persistence API discoverable without implying that the technical
-database library implements business bounded contexts. This pre-release
-scaffold intentionally replaced the former `lib/contexts` path without a
-compatibility shim; there are no supported external consumers of that
-unreleased API.
+Public narrow persistence entrypoints are grouped separately under
+`lib/stores`. This keeps a growing store API discoverable without implying that
+the technical database library implements the business bounded contexts. This
+pre-release scaffold intentionally replaced the former `lib/contexts` paths
+without a compatibility shim; there are no supported external consumers of
+that unreleased API.
 
-The `persistence/<owner>` directory records logical ownership of a physical
+The `src/persistence/<owner>` directory records logical ownership of a physical
 persistence slice. It is not a subdomain or bounded context and does not
-contain domain or application code. That code belongs to
+implement the owner's domain or application model. That code belongs to
 `packages/bounded_contexts/<context>`. A cluster such as `items` groups one
 cohesive persistence area. Split an oversized cluster by meaning, not by
 creating global DAO or table catalogs.
 
 `AppDatabaseModule.stores` publishes one immutable typed catalog after the
-database has opened and migrated. Application composition immediately narrows
-it through `stores.catalog` and passes only individual narrow stores to the
-Catalog factory. The catalog and context bundle are lifecycle-free views: they
-perform no lookup, I/O, caching, or disposal and are never placed in
-`AppDependencies`. Adding a context extends this explicit assembly but does
-not change database lifecycle logic.
+database has opened and migrated. A composition caller must immediately narrow
+it through `stores.catalog` or `stores.ordering` and pass only individual narrow
+stores across package boundaries. The catalog and context bundles are
+lifecycle-free views: they perform no lookup, I/O, caching, or disposal and are
+never application dependencies themselves. Adding a context extends this
+explicit assembly but does not change database lifecycle logic.
 
 `tables.drift` is the single composition manifest for the complete physical
 schema. It imports context-owned table definitions while
@@ -76,7 +91,7 @@ schema. It imports context-owned table definitions while
 global manifest: its `@DriftAccessor` includes only the tables and named queries
 needed by that cohesive access responsibility. A multi-table persistence
 cluster may expose a descriptively named table manifest, such as
-`<cluster>_tables.drift`, when its DAO and the database schema both need
+`ordering_orders_tables.drift`, when its DAO and the database schema both need
 the same cohesive set. A one-table cluster does not add a forwarding manifest.
 
 A DAO is not created mechanically for every table. One DAO may coordinate
@@ -175,12 +190,14 @@ tests live separately in `test/migrations/application_database`. A migration
 that changes persisted data requires real legacy fixtures; an empty generated
 template is not an acceptance test.
 
-Schema v2 is the current schema. Its v1→v2 migration converts legacy task-like
+Schema v2 is the accepted input compatibility baseline. Schema v3 is the
+current schema. Its v1→v2 migration converts legacy task-like
 rows into incomplete drafts, adds categories and explicit product fields, and
 initializes optimistic revisions. Because rebuilding an AUTOINCREMENT table can
 reset SQLite's sequence to the highest surviving row, the transition also
 preserves the legacy sequence explicitly. An ID issued before migration is
-never reused merely because its row was deleted.
+never reused merely because its row was deleted. The v2→v3 migration adds
+persistent Ordering parent/line tables while preserving Catalog data.
 
 Before the v1 table rebuild, the transition trims legacy titles with Dart's
 Unicode whitespace semantics in bounded keyset batches. A whitespace-only
@@ -190,12 +207,13 @@ user data, and its sanitized failure does not retain a title or identifier.
 This historical cutover check does not replace Catalog's authoritative runtime
 validation.
 
-The current v2 snapshot correction is pre-release and intentionally keeps
-schema version `2`. A local development database created from the earlier v2
-baseline must be deleted and recreated; an already-opened v2 database cannot
-acquire changed constraints through a same-version upgrade. Once a schema
-version is released, the same kind of correction requires a new forward
-migration instead of rewriting its snapshot.
+The v2 snapshot correction was accepted before v3 allocated its version. A
+local development database created from the earlier, incompatible v2 draft had
+to be deleted and recreated before it could serve as a v3 migration source.
+The v3 snapshot is likewise mutable only until this review is accepted: a
+database created from an earlier same-version v3 draft must be recreated. Once
+v3 is accepted, every correction requires a new forward migration instead of
+rewriting its snapshot or transition.
 
 Each transition is a top-level function using the generated schema for its
 target version. The registry runs the complete requested upgrade in one
@@ -225,6 +243,18 @@ using one physical browser database are unsupported. This version-compatibility
 rule is separate from the `unsafeIndexedDb` multi-tab coordination limitation;
 selecting a safer storage backend cannot make incompatible SQL versions safe.
 
+Ordering observations are state projections, not event logs. Each call creates
+a fresh single-subscription stream with no replay or automatic resubscribe, and
+rapid commits may be represented by the latest authoritative snapshot. All
+supported line writes increment the parent revision in the same transaction,
+so the private parent observation is the invalidation source for joined lines.
+
+`watchOrders` currently loads the complete aggregate set. The reference model
+is single-user and defines neither Order deletion/retention nor durable command
+idempotency. Before adopting it for an unbounded production dataset, introduce
+a consumer-driven paged query/read model and an explicit retention policy; do
+not add a test-only delete command or speculative index.
+
 Before releasing a migration that rebuilds a large table, test it with a
 representative database size and device class. The review must account for
 upgrade duration and temporary disk headroom for both the old and replacement
@@ -246,6 +276,10 @@ port `4444`.
   `0`/`1` representation.
 - Protect mutable item snapshots with the explicit monotonic `revision` column;
   conditional detail/lifecycle updates increment it atomically.
+- Store timestamps as UTC Unix milliseconds in the inclusive non-negative Dart
+  `DateTime` range `0..8640000000000000`; timestamps never replace optimistic
+  revisions. Wall-clock ordering is not a transition precondition because the
+  clock may move backwards.
 - Foreign keys are enabled for every connection, and upgraded databases run
   `foreign_key_check` before opening to application code.
 - Catalog item categories use `ON DELETE RESTRICT`: a category cannot disappear
@@ -253,8 +287,14 @@ port `4444`.
   an already published or archived offer. Category deletion is not part of the
   current narrow store contract.
 - Storage-level cross-column checks prevent published/archived Catalog offers
-  from contradicting their domain state. Domain reconstitution remains
-  authoritative for richer invariants.
+  and persisted Order lifecycle rows from contradicting their domain state.
+  Domain reconstitution remains authoritative for richer invariants.
+- `order_lines.order_id` references its owning Order with cascade delete;
+  Catalog product IDs remain scalar external references with no cross-context
+  foreign key or shared transaction.
+- Every supported Order line or lifecycle write conditionally updates and
+  increments the parent revision. Reusing an old token returns zero rows; the
+  store neither retries nor supplies durable idempotency.
 - Use triggers only for a technical invariant owned by one context. A
   cross-context workflow belongs to application coordination and may require an
   outbox or broker.

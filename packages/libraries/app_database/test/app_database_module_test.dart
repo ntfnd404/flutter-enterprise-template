@@ -6,6 +6,7 @@ import 'package:app_database/src/app_database_module.dart'
     show createAppDatabaseModuleForTesting;
 import 'package:app_database/src/connection/app_database_connection.dart';
 import 'package:app_database/stores/catalog.dart';
+import 'package:app_database/stores/ordering.dart';
 import 'package:drift/drift.dart' hide isNotNull;
 import 'package:drift/isolate.dart';
 import 'package:drift/native.dart';
@@ -40,6 +41,25 @@ void main() {
     addTearDown(first.dispose);
     await first.initialize();
     await _insertProduct(first.stores.catalog.items, title: 'Persisted item');
+    final orderId = await first.stores.ordering.orders.insertDraft(
+      createdAtUtcMilliseconds: 1700000000000,
+    );
+    await first.stores.ordering.orders.replaceDraftLines(
+      id: orderId,
+      expectedRevision: 0,
+      totalMinorUnits: 100,
+      currencyCode: 'USD',
+      lines: <StoredOrderLine>[
+        const StoredOrderLine(
+          catalogProductId: 99,
+          productTitleSnapshot: 'Persisted product',
+          unitPriceMinorUnits: 100,
+          currencyCode: 'USD',
+          quantity: 1,
+          catalogRevision: 4,
+        ),
+      ],
+    );
     await first.dispose();
 
     final reopened = createAppDatabaseModule(configuration: configuration);
@@ -49,6 +69,10 @@ void main() {
     final items = await reopened.stores.catalog.items.watchItems().first;
     expect(items, hasLength(1));
     expect(items.single.title, 'Persisted item');
+    final order = await reopened.stores.ordering.orders.getOrder(orderId);
+    expect(order, isNotNull);
+    expect(order!.revision, 1);
+    expect(order.lines.single.productTitleSnapshot, 'Persisted product');
   });
 
   test('exposes stores only while the module is ready', () async {
@@ -64,6 +88,7 @@ void main() {
     expect(module.stores.catalog, same(stores.catalog));
     expect(() => stores.catalog.items, returnsNormally);
     expect(() => stores.catalog.categories, returnsNormally);
+    expect(() => stores.ordering.orders, returnsNormally);
     expect(module.initialize, throwsStateError);
 
     final disposal = module.dispose();
@@ -224,6 +249,7 @@ void main() {
       expect(module.initialize, throwsStateError);
       expect(() => module.stores.catalog.items, throwsStateError);
       expect(() => module.stores.catalog.categories, throwsStateError);
+      expect(() => module.stores.ordering.orders, throwsStateError);
 
       final firstDisposal = module.dispose();
       final secondDisposal = module.dispose();
@@ -313,6 +339,52 @@ void main() {
       module.stores.catalog.items.watchItems().first.timeout(operationTimeout),
       throwsA(isA<CatalogStoreException>()),
     );
+  });
+
+  test('maps remote native Ordering mutation contention', () async {
+    final module = await _openLockedModule(directory);
+
+    await expectLater(
+      module.stores.ordering.orders
+          .insertDraft(createdAtUtcMilliseconds: 1700000000000)
+          .timeout(operationTimeout),
+      throwsA(isA<OrderingStoreException>()),
+    );
+  });
+
+  test('maps remote native Ordering watch contention', () async {
+    final module = await _openLockedModule(directory);
+
+    await expectLater(
+      module.stores.ordering.orders.watchOrders().first.timeout(
+        operationTimeout,
+      ),
+      throwsA(isA<OrderingStoreException>()),
+    );
+  });
+
+  test('preserves unexpected remote native Ordering failure', () async {
+    final module = createAppDatabaseModule(
+      configuration: _configuration(directory),
+    );
+    addTearDown(module.dispose);
+    await module.initialize();
+
+    try {
+      await module.stores.ordering.orders.insertDraft(
+        createdAtUtcMilliseconds: -1,
+      );
+      fail('Expected the SQLite constraint failure to remain unexpected.');
+    } on DriftRemoteException catch (error) {
+      expect(
+        error.remoteCause,
+        isA<SqliteException>().having(
+          (error) => error.resultCode,
+          'resultCode',
+          SqlError.SQLITE_CONSTRAINT,
+        ),
+      );
+    }
   });
 
   test('preserves an unexpected remote native SQLite failure', () async {

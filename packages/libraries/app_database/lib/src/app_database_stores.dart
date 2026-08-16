@@ -1,5 +1,6 @@
 import 'package:app_database/src/application_database.dart';
 import 'package:app_database/src/persistence/catalog/catalog_database_stores.dart';
+import 'package:app_database/src/persistence/ordering/ordering_database_stores.dart';
 
 /// Typed context store catalog published by a ready database module.
 ///
@@ -9,6 +10,9 @@ import 'package:app_database/src/persistence/catalog/catalog_database_stores.dar
 final class AppDatabaseStores._({
   /// Catalog-owned persistence stores.
   required final CatalogDatabaseStores catalog,
+
+  /// Ordering-owned persistence stores.
+  required final OrderingDatabaseStores ordering,
 });
 
 /// Creates all context store views over an initialized [database].
@@ -17,4 +21,7 @@ final class AppDatabaseStores._({
 /// independently disposable resources. It is package-internal by placement
 /// under `lib/src` and is intentionally absent from public entrypoints.
 AppDatabaseStores createAppDatabaseStores(ApplicationDatabase database) =>
-    AppDatabaseStores._(catalog: createCatalogDatabaseStores(database));
+    AppDatabaseStores._(
+      catalog: createCatalogDatabaseStores(database),
+      ordering: createOrderingDatabaseStores(database),
+    );

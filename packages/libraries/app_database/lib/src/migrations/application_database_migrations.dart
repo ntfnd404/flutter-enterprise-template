@@ -1,5 +1,6 @@
 import 'package:app_database/src/application_database.steps.dart';
 import 'package:app_database/src/migrations/v1_to_v2_catalog_products.dart';
+import 'package:app_database/src/migrations/v2_to_v3_ordering_orders.dart';
 import 'package:drift/drift.dart';
 
 /// Applies the ordered migration chain for the shared physical database.
@@ -29,6 +30,7 @@ Future<void> applicationDatabaseOnUpgrade(
       to: to,
       steps: migrationSteps(
         from1To2: migrateV1ToV2CatalogProducts,
+        from2To3: migrateV2ToV3OrderingOrders,
       ),
     );
 
