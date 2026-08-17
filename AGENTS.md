@@ -27,8 +27,9 @@ staging, runtime use, or dependency expansion out of order.
 - `lib/app/diagnostics`: root error boundaries, logger/reporter policy, and
   privacy-safe diagnostics.
 - `lib/app/environment`: immutable public client configuration.
-- `lib/app/di`: dependency-catalog construction, graph transaction, ownership,
-  rollback, and root-lifecycle handoff.
+- `lib/app/di`: generic graph transaction, register-only resource capability,
+  private-ledger ownership, rollback, app dependency construction, and
+  root-lifecycle handoff.
 - `lib/app/di/modules`: concrete app-owned infrastructure composition and
   platform adapters; graph primitives outside this subtree stay Flutter-free.
 - `lib/core/di/typedefs`: construction-only `Factory` vocabulary.
@@ -191,15 +192,26 @@ require a Flutter device.
   a second implementation or another real boundary. Repositories without owned
   resources are collaborators, not disposable runtime modules.
 - Never log raw errors, configuration values, BLoC events, or state payloads.
-- Register graph-owned disposable resources immediately after creation.
-- Never register borrowed resources or private internals already owned by a
-  module.
-- `AppDependencies` exposes only real app-lifetime ports or public application
-  facades. Presentation does not receive repositories or vendor clients.
-- `AppDependencies` has no lifecycle API. One returned graph owns the sealed
-  build-time resource registration, and one root lifecycle adapter owns that
-  graph after successful `runApp` handoff. The current Builder/Graph/Owner/
-  DisposalStack split is a candidate to audit, not a mandatory class design.
+- Register every graph-owned resource immediately and exactly once. Never
+  register borrowed resources or private internals already owned by a module,
+  and never retain `AppResourceRegistrar` after graph construction.
+- Keep `AppDependencies` flat, typed, and lifecycle-free. It contains only real
+  app-lifetime public facades or ports with accepted consumers, except for an
+  explicitly bounded, tested consumer gap recorded in the roadmap. It never
+  exposes lookup, repositories, stores, modules, vendor clients, or BLoC
+  factories.
+- Keep graph primitives independent of Flutter, business packages, Diagnostics,
+  routing, and features. `AppDependencyGraphOwner` is the sole Flutter adapter,
+  owns one graph once, and never provides dependency lookup or replacement.
+- Any graph-lifecycle change must preserve the canonical one-owner, identical
+  memoized disposal Future, sequential all-attempt LIFO cleanup, reentrancy
+  rejection, and primary-first rollback contracts in
+  [application architecture](doc/architecture.md#build-transaction-and-ownership).
+- Keep composition explicit and constructor-based. Add private typed helpers or
+  cohesive module factories only for demonstrated ownership or partial-rollback
+  responsibilities; never add a universal module protocol or DI container.
+- Create a concrete disposable `AppEventBus` only with real consumers and give
+  downstream code non-owning publisher/subscriber roles.
 - BLoCs and their factories stay in `feature/<name>`.
 - Shared `Factory` typedefs describe construction only; they are not
   dependencies, owners, or permission to expose BLoC factories from
@@ -256,10 +268,6 @@ require a Flutter device.
   published while its screen exists.
 - `AppErrorBoundary` is the sole reporter of unhandled BLoC failures; the global
   BLoC observer emits type-only debug breadcrumbs.
-- App dependency composition registers every app-owned leaf resource or
-  returned module immediately in the exact ownership boundary created for that
-  build. Successful construction closes registration before returning the
-  graph; the DI audit may change the involved type names and split.
 - Page builders are synchronous and non-owning. They use `route.pageKey`,
   dispatch by exact route type, and never start I/O or allocate disposable
   resources.

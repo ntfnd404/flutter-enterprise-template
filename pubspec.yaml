@@ -12,8 +12,10 @@ workspace:
 
 dependencies:
   app_database: 0.1.0
+  catalog: 0.1.0
   flutter:
     sdk: flutter
+  ordering: 0.1.0
   path: 1.9.1
   path_provider: 2.1.6
 

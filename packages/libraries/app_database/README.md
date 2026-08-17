@@ -112,11 +112,13 @@ or become a generic global failure layer.
 App composition:
 
 1. creates `AppDatabaseModule`;
-2. registers it immediately in `AppResourceDisposalStack`;
+2. immediately transfers the returned module to its application-lifetime
+   ownership boundary;
 3. awaits `initialize()`;
 4. narrows `module.stores` to the required context stores;
 5. builds lifecycle-free context facades over those borrowed stores;
-6. lets the graph close the module once in LIFO order.
+6. lets the application owner close the module exactly once, after any owned
+   dependents that borrow its stores.
 
 The module accepts one initialization attempt. A failed instance is disposed
 and replaced if retry is required. The first disposal request synchronously

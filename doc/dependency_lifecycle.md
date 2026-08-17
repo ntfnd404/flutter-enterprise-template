@@ -6,17 +6,18 @@ and released. The normative application contract remains in
 extend it without turning the template into a service locator or a hierarchy of
 empty modules.
 
-The DI type names in pseudocode reflect the current implementation candidate,
-not a pre-approved class split. The dedicated DI audit may merge, split,
-rename, or hide Builder, Graph, Owner, and DisposalStack types while preserving
-the ownership and failure invariants described here.
+The examples use the app-local typed graph and register-only ownership boundary
+defined normatively in
+[Build transaction and ownership](architecture.md#build-transaction-and-ownership).
+The names make the recipes concrete; this guide does not define a second DI
+contract or a service-locator framework.
 
 ## Lifetimes
 
 | Lifetime | Typical owner | Examples |
 |---|---|---|
 | Process-global | Framework or concrete SDK initializer | Flutter binding, URL strategy, default Firebase initialization, FCM background-handler registration |
-| Application | Returned app graph and its root lifecycle owner | Event bus and cohesive app/context modules registered during dependency composition |
+| Application | Returned app graph and its root lifecycle owner | Cohesive app/context modules registered during dependency composition |
 | Session/tenant | Authenticated flow-shell owner, only after a real requirement exists | User-keyed cache, authenticated socket, tenant database |
 | Feature/flow | Feature scope or flow-shell provider | BLoC shared by several feature routes |
 | Page/screen | `BlocProvider(create: ...)`, provider, or `RouteScope` | Screen BLoC, editor controller, camera session |
@@ -28,9 +29,11 @@ The useful ownership rule is more precise than “dispose where created”:
 > The creator must immediately choose an owner. It either keeps ownership or
 > transfers it through an explicit lifecycle boundary.
 
-Each build creates a new ownership boundary. Dependency composition fills it
-with immediately registered app-owned leaves and returned modules, closes
-registration on success, and returns one graph to one root lifecycle owner.
+Each build creates a new private ownership boundary. Dependency composition
+fills it with immediately registered app-owned leaves and returned modules,
+the graph transaction seals registration on success, and one root lifecycle
+owner claims the graph once.
+
 `AppDependencies` only describes what downstream composition may use; it does
 not expose graph lifecycle or lookup.
 
@@ -41,7 +44,7 @@ For each concrete integration, answer in order:
 1. Does the SDK require process-global preparation before any owned instance
    can exist? Put only that preparation in the framework initializer.
 2. Is this one simple app-owned leaf with no private construction transaction?
-   Create it in `buildAppDependencies` and register it immediately.
+   Create it in the app dependency factory and register it immediately.
 3. Does the integration contain private clients, repositories, subscriptions,
    or internal partial rollback? Let a concrete module factory own them and
    register the returned module once.
@@ -54,6 +57,11 @@ For each concrete integration, answer in order:
 
 Do not add a module class for one ordinary object with no private lifecycle or
 partial-construction risk. Direct leaf registration is clearer in that case.
+Keep the current Database→Catalog→Ordering wiring linear and explicit. Split it
+into private typed subordinate functions only when size or reuse demonstrates
+a cohesive responsibility. `lib/app/di/modules` is reserved for concrete
+resource-owning technical or platform composition, not arbitrary groups or a
+universal module protocol.
 
 ## Application graph sketch
 
@@ -62,14 +70,8 @@ these packages or placeholder types until a real capability selects them.
 
 ```dart
 Future<AppDependencies> buildAppDependencies(
-  AppResourceDisposalStack resources,
+  AppResourceRegistrar resources,
 ) async {
-  // Simple app-owned leaf: create first so LIFO closes it last.
-  final eventBus = resources.register(
-    AppEventBus(),
-    (eventBus) => eventBus.dispose(),
-  );
-
   // The module factory owns its database/client/repositories/subscriptions.
   final capabilityModule = await buildCapabilityModule(
     configuration: capabilityConfiguration,
@@ -88,7 +90,6 @@ Future<AppDependencies> buildAppDependencies(
   );
 
   return AppDependencies(
-    eventBus: eventBus,
     capability: capabilityModule.facade,
     notifications: notificationsModule.facade,
   );
@@ -98,9 +99,28 @@ Future<AppDependencies> buildAppDependencies(
 This is placement-oriented pseudocode; the base scaffold does not introduce
 the capability types. Real foundational resources that must outlive dependents
 are created first. Sequential LIFO teardown closes later modules first and the
-event bus last. Raw databases, repositories, notification plugins, and SDK
+foundation last. Raw databases, repositories, notification plugins, and SDK
 clients do not become fields of `AppDependencies` merely because composition
-created them.
+created them. The registrar cannot seal, dispose, or inspect the private
+ledger, and factories must not retain it after construction.
+
+The graph is created by the generic top-level transaction:
+
+```dart
+final graph = await buildAppDependencyGraph<AppDependencies>(
+  dependenciesFactory: buildAppDependencies,
+  captureRollbackFailure: collectRollbackFailure,
+);
+```
+
+`collectRollbackFailure` follows the construction-failure contract in
+[Build transaction and ownership](architecture.md#build-transaction-and-ownership);
+it is not an outward reporter.
+
+The typed dependency catalog receives only real app-lifetime public facades or
+ports with accepted consumers, except for a bounded, tested consumer gap
+recorded in the roadmap. A disposable capability such as `AppEventBus` stays
+graph-owned and exposes only the non-owning roles required downstream.
 
 ## Failure-atomic assemblies
 
@@ -116,7 +136,7 @@ typedef CapabilityCleanupFailureCallback =
     );
 
 static Future<CapabilityModule> open({
-  required CapabilityCleanupFailureCallback onRollbackFailure,
+  required CapabilityCleanupFailureCallback onCleanupFailure,
 }) async {
   NativeSession? session;
   StreamSubscription<Object?>? subscription;
@@ -137,9 +157,9 @@ static Future<CapabilityModule> open({
       session: session,
     );
     if (cleanupFailure != null) {
-      // This callback is guarded by the module boundary. Its failure cannot
-      // replace the original initialization failure.
-      await _reportCleanupSafely(onRollbackFailure, cleanupFailure);
+      // This collector is guarded by the module boundary. Its failure cannot
+      // replace or escape before the original initialization failure.
+      await _collectCleanupSafely(onCleanupFailure, cleanupFailure);
     }
     Error.throwWithStackTrace(primaryError, primaryStackTrace);
   }
@@ -191,9 +211,12 @@ void runApplication({
       logger: logger,
     );
 
-    final graph = await const AppDependencyGraphBuilder().build(
-      dependenciesFactory: buildAppDependencies,
-      onRollbackFailure: reportRollbackFailure,
+    final graph = await buildAppDependencyGraph<AppDependencies>(
+      dependenciesFactory: (resources) => buildAppDependencies(
+        resources,
+        storageConfiguration: configuration.storage,
+      ),
+      captureRollbackFailure: collectRollbackFailure,
     );
     final pages = buildAppPages(dependencies: graph.dependencies);
 
@@ -220,24 +243,20 @@ remain sanitized; raw errors and stack traces go to `AppErrorReporter`, not to
 `AppLogger`. A buffered or remote logging transport would be a separate owned
 diagnostics module because it has flush and shutdown semantics.
 
+The abbreviated example omits the surrounding startup `try`/`catch`. Its exact
+rollback collection and normal-teardown reporting behavior is defined in
+[Build transaction and ownership](architecture.md#build-transaction-and-ownership).
+
 ### Shared physical Drift module
 
-The scaffold intentionally implements one shared physical database as described
-in [ADR 0001](adr/0001_shared_application_database.md). This is infrastructure,
-not a business context:
+The scaffold implements one shared physical database as described in
+[ADR 0001](adr/0001_shared_application_database.md). It is infrastructure, not
+a business context. Its complete package contract lives in the
+[AppDatabase README](../packages/libraries/app_database/README.md).
 
-- [`app_database_composition.dart`](../packages/libraries/app_database/lib/app_database_composition.dart)
-  creates and disposes the physical database module;
-- [`stores/catalog.dart`](../packages/libraries/app_database/lib/stores/catalog.dart)
-  exposes only the narrow catalog item/category stores;
-- [`catalog.dart`](../packages/bounded_contexts/catalog/lib/catalog.dart) remains the public
-  catalog application API used by presentation;
-- [`catalog_composition.dart`](../packages/bounded_contexts/catalog/lib/catalog_composition.dart)
-  adapts borrowed persistence into a lifecycle-free application facade.
-
-App composition resolves a stable native path outside the Dart-only database
-package, registers the module before its connection opens, then constructs
-the context facade:
+App composition resolves the host-specific storage configuration, creates the
+module, transfers it immediately to the application-lifetime owner, and only
+then initializes and borrows its typed stores:
 
 ```dart
 final databaseConfiguration = await createAppDatabaseConfiguration(
@@ -248,12 +267,11 @@ final databaseModule = resources.register(
   (module) => module.dispose(),
 );
 await databaseModule.initialize();
-final databaseStores = databaseModule.stores;
-final catalogStores = databaseStores.catalog;
 
+final databaseStores = databaseModule.stores;
 final catalogApplication = createCatalogApplication(
-  itemsStore: catalogStores.items,
-  categoriesStore: catalogStores.categories,
+  itemsStore: databaseStores.catalog.items,
+  categoriesStore: databaseStores.catalog.categories,
 );
 final ordering = createOrderingFacade(
   store: databaseStores.ordering.orders,
@@ -262,67 +280,21 @@ final ordering = createOrderingFacade(
   ),
   utcNow: () => DateTime.now().toUtc(),
 );
-
-return AppDependencies(
-  eventBus: eventBus,
-  catalog: catalogApplication.facade,
-  ordering: ordering,
-);
 ```
 
-The root store catalog and its context bundles are synchronous, immutable,
-lifecycle-free composition views. They are not dependency containers: app DI
-narrows them immediately and passes only the required store contracts to each
-context factory.
+The store catalog and context bundles are synchronous, immutable,
+lifecycle-free composition views. App DI narrows them immediately. Contexts
+borrow stores, own their repository mapping and application facades, and never
+close the physical database. Only consumed facade/port views enter
+`AppDependencies`; Product Offers, the Ordering ACL, repositories, stores,
+clock, and module remain inside composition.
 
-The module owns the connection, migration chain, generated rows, and private
-DAOs. `CatalogItemsStore` and `CatalogCategoriesStore` are the real
-cross-package persistence seams, so DAO interfaces beneath them would duplicate
-the boundary. `StoreCatalogItemRepository` and
-`StoreCatalogCategoryRepository` belong to Catalog infrastructure and map
-store records/failures into context types. Their separate repository ports
-remain domain-owned; `CatalogFacade` remains the only Catalog behavior injected
-into Catalog presentation. The `CatalogApplication` composition result,
-Published Language,
-Ordering ACL, repositories, stores, and clock remain inside composition;
-`OrderingFacade` is the only Ordering behavior placed in `AppDependencies`.
-
-If opening or migration fails, Builder rollback closes the already-registered
-database module and startup diagnostics receive the primary failure with its
-original stack. Only SQLite `BUSY` and `LOCKED` contention is sanitized as
-`CatalogStoreException`, then mapped to `CatalogPersistenceException` at the
-context infrastructure boundary. Constraint, corruption, read-only, disk-full,
-I/O, and
-programming failures are not masked and preserve the object and stack observed
-at that boundary. Direct executors preserve `SqliteException`; background
-executors preserve `DriftRemoteException` and use its SQLite `remoteCause`
-only for BUSY/LOCKED classification.
-
-Database implementation files are grouped below
-`src/persistence/<owner>/<cluster>/{tables,queries,dao,store}`. This records
-logical schema/store ownership without moving domain or application code into
-the technical database package. Authored table definitions stay in `tables`;
-root `src/schema` contains only versioned migration snapshots. DAO boundaries
-follow cohesive access responsibilities rather than one-interface-per-table.
-A persistence-owner-level `src/persistence/<owner>/failures` is allowed only
-for store
-failure contracts or translation shared across that context's clusters. DAO,
-table, and concrete store files remain inside their owning persistence cluster.
-
-The module accepts one initialization attempt and exposes stores only after it
-is ready. The first disposal request synchronously revokes store access;
-repeated or concurrent disposal shares one Future and awaits any in-flight
-initialization before closing acquired resources. This private monotonic guard
-is ownership enforcement, not observable application state. Native paths must
-be absolute. On Web, the default policy rejects in-memory fallback but permits
-compatibility IndexedDB; a stricter policy also rejects the implementation that
-cannot coordinate multiple tabs safely.
-
-Several repositories in one context remain ordinary collaborators over one or
-more narrow stores. They do not become separate runtime modules unless they own
-subscriptions, workers, or other disposable resources. A future context module
-with owned resources is registered after the database so LIFO disposal closes
-the context before its borrowed store becomes unavailable.
+If opening or migration fails, the graph rolls back the already-owned module
+before returning the preserved construction failure. Readiness, module
+disposal, schema, migration, failure-classification, and platform-storage rules
+belong to the AppDatabase package contract linked above. Additional
+repositories remain ordinary lifecycle-free collaborators unless they acquire
+subscriptions, workers, or another real owned resource.
 
 ### Typed settings over SharedPreferences
 
@@ -340,7 +312,6 @@ final settings = await SettingsFacadeImpl.create(
 );
 
 return AppDependencies(
-  eventBus: eventBus,
   settings: settings,
 );
 ```
@@ -433,7 +404,7 @@ Future<OperationResult> executeOperation(OperationInput input) async {
 - A WebSocket module owns reconnect timers, subscriptions, controllers, and the
   socket, and closes them in its contract-specific order.
 - Request timeout, cancellation, retry, and abort semantics belong to the
-  concrete adapter. The generic disposal stack imposes no timeout.
+  concrete adapter. The generic graph imposes no timeout.
 - Required workflows await their operation result. Best-effort telemetry is
   isolated and cannot fail a user workflow.
 
@@ -475,13 +446,11 @@ created below the Page through `BlocProvider`, another provider, or
 
 ## Teardown and durability
 
-The application disposal mechanism is idempotent, sequential, and LIFO. It
-attempts every disposer and throws one aggregate. Build rollback and normal
-root-owner teardown each offer that aggregate to their callback
-once. If the callback violates its contract and throws, only the callback
-failure reaches the owner zone. DI awaits asynchronous callbacks to preserve
-ordering, so a callback that performs I/O must own a bounded timeout and must
-not wait indefinitely on a remote diagnostic service.
+The exact graph states, handoff authority, LIFO failure behavior, reentrancy
+protection, and reporting/privacy contracts are defined only in
+[Build transaction and ownership](architecture.md#build-transaction-and-ownership).
+This guide focuses on their practical consequence: cleanup is a resource
+release boundary, not a durability protocol.
 
 Flutter does not await `State.dispose`, and a mobile OS may kill the process
 without any teardown. Therefore:

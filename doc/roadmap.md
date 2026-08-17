@@ -43,81 +43,56 @@ The local Git history has accepted these autonomous batches:
 | `50b55e4` | Ordering persistence schema v3 |
 | `f6b2243` | Consolidated Architecture Source of Truth v8 |
 | `0b61dd6` | Flutter 3.47 platform and toolchain baseline |
+| `7b710f3` | Ordering bounded context and Catalog ACL |
+| Revision containing this roadmap | App-owned dependency graph |
+
+The DI row uses a self-reference because a commit cannot contain its own final
+hash. The next accepted roadmap update replaces it with that revision's hash.
 
 The accepted repository therefore contains the `bounded_contexts/libraries`
 package taxonomy, a shared physical database, the Catalog business context,
-the Ordering persistence seam, and the Flutter 3.47/Dart 3.13 platform
-baseline. It does not yet contain an accepted Ordering business package or
-accepted application runtime built on these facades.
+the Ordering bounded context and Catalog ACL, and the Flutter 3.47/Dart 3.13
+platform baseline. The revision containing this snapshot accepts the app
+dependency graph, but not a live application runtime built on the context
+facades.
 
 The working tree contains later implementations so adjacent APIs can be
-developed and tested together. Ordering, DI, diagnostics, UI kit, routing,
-presentation, startup, and integration scenarios remain review candidates
-until their own commits.
+developed and tested together. Diagnostics, UI kit, routing, presentation,
+startup, and integration scenarios remain review candidates until their own
+commits.
 
-## Current review: Ordering bounded context
+## Accepted by this revision: App-owned dependency graph
 
-Accept the pure-Dart downstream context:
+The DI design audit is complete. Accept the app-local implementation with:
 
-- persistent multi-line Order aggregate;
-- Ordering application facade and repository adapter;
-- Ordering-owned Catalog Anti-Corruption Layer;
-- package README, DartDoc, tests, and architecture guard;
-- Catalog-to-Ordering relationship in the Context Map.
+- generic `AppDependencyGraph<T>` and top-level
+  `buildAppDependencyGraph<T>` construction transaction;
+- a register-only construction ownership boundary;
+- non-generic `AppDependencyGraphOwner` as the sole Flutter-aware DI type;
+- immutable, lifecycle-free, typed `AppDependencies`;
+- production Database→Catalog→Ordering wiring and real teardown tests.
 
-The Context Map edge is accepted atomically with the downstream package. It
-classifies Catalog Product Offers as a Published Language, the direct call as
-a synchronous query, the adapter as an ACL, and consistency as a point-in-time
-snapshot with no cross-context atomicity.
+The complete normative lifecycle, rollback, ownership, privacy, and composition
+contract is maintained in
+[Build transaction and ownership](architecture.md#build-transaction-and-ownership),
+not repeated in this roadmap.
 
-The package review proves persistent empty drafts, the 100-line bound, strict
-rehydration, checked money, status and revision transitions, fixed UTC time,
-offer refresh during placement, immutable placed snapshots, operation-specific
-failures, stream ownership, and Catalog outage behavior.
+The accepted dependency catalog currently contains `CatalogFacade` and
+`OrderingFacade`; the snapshot does not compose `AppEventBus`. Stores,
+repositories, Product Offers, the Catalog ACL, clock, and database module remain
+composition-only.
 
-This snapshot contains no application DI or Flutter UI. The root application
-does not add a direct Ordering dependency until the DI phase creates its first
-production import.
+Catalog and Ordering facades intentionally have no Flutter consumer through the
+Diagnostics and UI kit prerequisite phases. This bounded gap expires in the
+Routing/presentation phase; if that phase is cancelled or materially delayed,
+the unused outputs are removed. The accepted `main.dart` remains the simple
+scaffold entrypoint until the Startup phase, so this DI factory is tested
+production composition but is not yet live runtime wiring.
 
-## Next review: App-owned dependency graph
+The autonomous DI snapshot passed isolated analysis, tests, DartDoc, full
+quality checks, and staged review without blocker, high, or medium findings.
 
-The existing DI code is a design candidate, not a pre-approved implementation.
-Review behavior before staging code and retain only types whose responsibilities
-remain justified.
-
-Fixed invariants are:
-
-- manual constructor injection and no service locator;
-- one ownership boundary per build;
-- immediate registration of owned resources;
-- no registration of borrowed stores or module internals;
-- sealed ownership handoff after a successful build;
-- complete sequential LIFO rollback;
-- preservation of the primary failure and original stack;
-- separate aggregate cleanup failures;
-- idempotent concurrent disposal;
-- lifecycle-free `AppDependencies`;
-- no dependency lookup through the graph owner;
-- no DI dependency on diagnostics, routing, or features.
-
-The review may merge, split, rename, or remove the current Builder, Graph,
-Owner, and DisposalStack types. It must examine reentrancy, synchronous and
-asynchronous failures, callback isolation, constructor visibility, Flutter-free
-graph primitives, graph replacement, async widget teardown, aggregate privacy,
-and production Database→Catalog→Ordering teardown.
-
-Production composition creates and immediately registers one database module,
-narrows its stores into one Catalog application and one Ordering facade, and
-places only `CatalogFacade`, `OrderingFacade`, and the actually consumed
-AppEventBus in `AppDependencies`. Catalog, Ordering, their repositories, ACL,
-clock, stores, and database internals remain non-owning composition details.
-
-**Acceptance:** the architecture review records why each retained type exists;
-rollback and normal teardown are covered; real Database→Catalog→Ordering
-wiring is tested; and the isolated staged review has no blocker, high, or
-medium findings.
-
-## Application diagnostics
+## Next review: Application diagnostics
 
 **Entry criterion:** DI is accepted.
 
@@ -242,11 +217,32 @@ This phase does not claim platform-build coverage.
 
 ## AST-based architecture guards
 
-Replace source-text parsing with dev-only `package:analyzer` checks for imports,
-exports, parts, constructor invocations, approved composition points,
-Environment reads, context contracts, and cross-package `src` imports. Remove
-the equivalent old parsing guard as each rule moves; do not maintain two
-competing implementations.
+After Minimal CI, replace source-text parsing in three autonomous review
+batches:
+
+1. AST foundation and directives: add direct root dev dependency
+   `analyzer: 13.3.0` while the Flutter 3.47/Dart 3.13 baseline remains, retain
+   deterministically sorted filesystem discovery, and add one test-only
+   `parseString` helper that fails closed on parser errors. Migrate imports,
+   exports with `show`/`hide`, `part`/`part of`, allowed import locations, and
+   foreign cross-package `src` imports in this batch.
+2. Declarations and contracts: migrate modifiers, inheritance, constructors,
+   fields, methods, public surfaces, Event and BLoC ownership, typed store
+   catalogs, and prohibited container/DAO abstractions.
+3. Executable syntax and composition: migrate constructor calls/references,
+   Environment reads, graph claim/dispose sites, dependency-field access,
+   lookup APIs, route-name references, and ordering checks based on AST offsets.
+
+Before the first batch, classify every existing assertion in a review matrix as
+an AST replacement, a retained structural/non-Dart check, or a removal covered
+by a named stronger rule. Replace each source-text rule atomically with its AST
+equivalent; do not keep competing implementations. File placement, manifests,
+`build.yaml` and other build/tool configuration, Context Map YAML, SQL/Drift
+schemas, generated layout, and behavioral tests stay outside Dart AST checks.
+Do not add a package, CLI, plugin, custom lint, DSL, or resolved-element
+infrastructure without a concrete rule that requires it. Remove the provisional
+source-text warning only after the third batch leaves no AST-classified rule in
+the migration matrix.
 
 ## Review hazards
 

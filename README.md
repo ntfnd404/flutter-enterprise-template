@@ -42,6 +42,10 @@ private keys, service-account credentials, or private tokens in
 
 ## Startup flow
 
+This is the normative end-state. See the
+[architecture roadmap](doc/roadmap.md) for the accepted implementation state
+and intentionally deferred phases.
+
 ```text
 main → runApplication
   → AppErrorBoundary installs root handlers
@@ -96,10 +100,9 @@ packages/
     └── ui_kit/               # Material theme and semantic design tokens
 ```
 
-This tree shows the architectural target. Catalog, AppDatabase, and the
-Flutter 3.47 platform baseline are already accepted. Ordering is the current
-isolated review; app-owned DI and diagnostics, UI kit, presentation, and
-startup are accepted only by their later ordered roadmap patches.
+This tree shows the architectural target. See the
+[architecture roadmap](doc/roadmap.md) for the accepted Git state, current
+review order, and temporary differences between the target and implementation.
 
 `packages` is the Pub workspace container, not an application layer.
 `bounded_contexts` contains business-model boundaries; `libraries` is a
@@ -243,9 +246,10 @@ connection race while exercising the same browser storage implementation.
 5. Let that context own its typed `<Capability>Configuration.fromValues`, while
    the application environment loader remains the sole dart-define reader.
 6. Build a complex integration in its owning module factory, register the
-   returned module once in `buildAppDependencies`, and expose only consumed
-   application facades through `AppDependencies`. A simple app-owned leaf such
-   as `AppEventBus` may be registered directly.
+   returned module once through `AppResourceRegistrar`, and expose only consumed
+   application facades through `AppDependencies`. If presentation later needs
+   `AppEventBus`, graph composition owns the concrete disposable instance while
+   consumers receive only non-owning publisher/subscriber roles.
 7. Regenerate Drift sources with `make generate-database` after SQL or DAO
    annotation changes. After every schema change, run `make database-schema`
    and review the snapshot plus generated verifier under

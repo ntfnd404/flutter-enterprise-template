@@ -23,8 +23,8 @@ artifacts have narrower responsibilities:
 - `architecture/context_map.yaml` records only DDD topology accepted in Git;
 - `doc/roadmap.md` records accepted commits, current review scope, ordered
   future work, and temporary target-versus-code gaps;
-- `doc/dependency_lifecycle.md` provides detailed examples without fixing a
-  design that this document leaves to an architecture audit;
+- `doc/dependency_lifecycle.md` provides detailed examples of the DI and
+  lifecycle contracts fixed here;
 - the root README provides onboarding, while package READMEs document their
   owning capability;
 - `AGENTS.md` and `CLAUDE.md` derive executable contributor instructions from
@@ -45,10 +45,10 @@ of truth.
 | `runApplication` | Environment loading, graph composition, ownership handoff, startup fallback |
 | `AppErrorBoundary` | Root zone, Flutter/platform handlers, injected safe reporting |
 | `initializeAppFramework` | Process-global framework and required SDK preparation |
-| `buildAppDependencies` | App-level module composition and downstream catalog construction |
-| App graph construction | Transactional graph construction, ownership handoff, and rollback; current DI types remain subject to the dedicated DI audit |
+| `buildAppDependencies` | Concrete app-level Database→Catalog→Ordering composition |
+| `buildAppDependencyGraph<T>` | Generic transactional construction over one private resource ledger |
 | `AppDependencies` | Immutable downstream port/facade catalog without lifecycle APIs |
-| Root graph owner | Flutter lifecycle adapter for one accepted graph |
+| `AppDependencyGraphOwner` | Flutter lifecycle adapter that claims one `AppDependencyGraph<Object>` once |
 | `App` | Routing and application UI lifecycle |
 
 ## Startup sequence
@@ -59,8 +59,9 @@ main → runApplication
   → load and validate AppStartupConfiguration
   → initializeAppFramework(configuration.environment, logger)
   → build and validate the route registry
-  → graph construction creates one ownership boundary
-  → buildAppDependencies composes modules and returns AppDependencies
+  → buildAppDependencyGraph creates one private ownership boundary
+  → buildAppDependencies receives only a register-only resource capability
+  → the graph seals registration and exposes AppDependencies
   → build app-owned Page catalog from narrow dependencies
   → runApp hands the graph to its root lifecycle owner
   → App owns Rolter lifecycle
@@ -431,8 +432,8 @@ forbidding database access from presentation.
 | Application facade/query/command used by features | Owning context, exposed through `AppDependencies` | Preserve business ownership without leaking repositories |
 | Physical Drift database, SQL schema, migrations, and DAOs | `packages/libraries/app_database`, owned by `AppDatabaseModule` | Centralize one physical file and expose only narrow context stores |
 | Catalog repository port, store adapter, and application facade | `packages/bounded_contexts/catalog` | Keep business language and mapping in the owning context |
-| `AppEventBus` | Graph, then `AppDependencies` | Public app-lifetime port for best-effort cross-feature facts |
-| Graph resource ownership | App graph construction and the returned owner | Private lifecycle mechanism; the DI audit decides the minimum justified type split |
+| `AppEventBus` instance with real publishers/subscribers | Graph-owned leaf | Concrete lifecycle stays in composition; consumers receive non-owning publisher/subscriber roles |
+| Graph resource ownership | `buildAppDependencyGraph<T>` and `AppDependencyGraphOwner` | Private ledger during construction and one-shot root ownership after handoff |
 | BLoC factory | `feature/<name>/di` | Presentation construction policy |
 | `Factory<T>` closure | `feature/<name>/di` | Creates a new feature-owned instance without runtime parameters; the invoking lifecycle owner owns the result |
 | `ParamFactory<T, P>` closure | `feature/<name>/di` | Creates a new feature-owned instance from a typed route/runtime parameter; the invoking lifecycle owner owns the result |
@@ -449,50 +450,137 @@ forbidding database access from presentation.
 | Startup-failure BLoC, DI, and screen | `feature/startup_failure` | Isolated user-facing fallback scenario |
 | Ephemeral action stream | Owning BLoC | Same-feature one-shot UI commands |
 
-`AppDependencies` is an immutable catalog read only at explicit application
-composition points. Modules and repositories retain their own private
-collaborators. `AppEventBus` is public because Page composition injects it into
-feature DI. `AppDependencies` has no `dispose`, stack, registrar, vendor
-clients, repositories, or BLoC factories. Graph resource ownership remains
-unavailable to features and leaf widgets.
+`AppDependencies` is an immutable, flat, app-specific catalog read only at
+explicit application composition points and narrowed immediately for each
+consumer. It contains only app-lifetime public application facades or ports
+with real accepted consumers. The sole temporary exception is an explicitly
+bounded consumer gap recorded in the roadmap and covered by a production
+composition test; an expired gap removes the dependency. Otherwise a dependency
+is added atomically with its first consumer. A disposable capability is exposed
+through non-owning roles rather than through its concrete lifecycle-bearing
+implementation. Modules and repositories retain their private collaborators.
+`AppDependencies` has no `dispose`, lookup API, ledger, registrar,
+configuration aggregate, vendor client, repository, store, module, or BLoC
+factory. Graph resource ownership remains unavailable to features and leaf
+widgets.
 
 Any internal lifecycle state is a private monotonic guard rather than
 presentation state and has no subscribers. A `ChangeNotifier`, `ValueNotifier`,
 or third-party observable would expose ownership transitions, introduce
 reentrant callbacks, and create another lifecycle without improving the
-invariants. The DI audit decides the smallest internal protocol and state
-representation that can enforce registration closure and idempotent disposal.
+invariants.
 
 ## Build transaction and ownership
 
-The target fixes lifecycle outcomes rather than pre-approving the current
-Builder, Graph, Owner, and DisposalStack class split. Those types are an
-implementation candidate and must pass the dedicated DI architecture review.
-The review may merge, split, rename, or remove them while retaining every
-invariant below.
+The app-local DI mechanism has four core roles:
 
-- Each build creates a new ownership boundary.
+```dart
+abstract interface class AppResourceRegistrar {
+  T register<T extends Object>(
+    T resource,
+    AppResourceDisposer<T> disposer,
+  );
+}
+
+Future<AppDependencyGraph<T>> buildAppDependencyGraph<T extends Object>({
+  required Future<T> Function(AppResourceRegistrar resources)
+      dependenciesFactory,
+  required AppResourceRollbackFailureCollector captureRollbackFailure,
+});
+```
+
+`buildAppDependencyGraph<T>` is the one generic construction transaction.
+It receives the factory inline as
+`Future<T> Function(AppResourceRegistrar resources)`; a public typedef would
+add vocabulary without another semantic contract.
+`AppDependencyGraph<T>` pairs a typed result with sealed application-resource
+ownership. Non-generic `AppDependencyGraphOwner` accepts
+`AppDependencyGraph<Object>`, is the only Flutter-aware DI type, and performs
+the root-lifecycle handoff. The resource ledger is private: factories receive
+only `AppResourceRegistrar`, so they cannot seal, dispose, or inspect lifecycle
+state and must not retain the registrar. A stateless builder object and a
+public disposal stack would add API without adding responsibility and are not
+part of the target.
+
+- Each build creates a fresh private ownership boundary.
 - An owned resource is registered immediately after acquisition.
 - Borrowed resources and module internals already owned elsewhere are not
   registered again.
-- Successful construction closes registration before ownership handoff.
-- Construction or handoff failure attempts every disposer in sequential LIFO
-  order before returning control to startup.
-- The primary failure and its original stack remain the construction result.
+- `register` returns the exact supplied instance unchanged.
+- Registering the same object identity twice in one graph is rejected; each
+  owned object has one cohesive disposer.
+- Successful construction seals registration before returning the graph.
+- Construction failure attempts every registered disposer in sequential LIFO
+  order before rethrowing the primary error.
+- The primary failure object and its original stack remain the construction
+  result.
 - Cleanup failures are immutable secondary data and never replace the primary
   failure.
-- Cleanup aggregates preserve failure objects and stacks for the owning
-  boundary while exposing only privacy-safe string representations.
-- A broken cleanup callback is isolated and cannot trigger duplicate reporting
-  of the same aggregate.
-- Repeated and concurrent disposal share one completion and close each resource
-  once.
-- One graph has one owner; replacing a live graph or accepting ownership twice
-  is rejected.
+- Repeated and concurrent disposal return the exact same memoized `Future` and
+  invoke each disposer at most once.
+- One graph can be claimed by one root owner exactly once; pre-handoff disposal
+  prevents a later claim, and graph replacement is rejected.
 - Presentation cannot look up dependencies or register resources through the
   graph or its owner.
-- Graph primitives remain independent of diagnostics, routing, features, and
-  business packages.
+- Graph primitives remain Flutter-free and independent of diagnostics,
+  routing, features, and business packages. Only the root owner imports
+  Flutter.
+
+Identity ownership is enforced within one ledger. Detecting the same object in
+another independently built graph would require a global registry and is
+therefore a composition contract covered by production tests and review. Graph
+construction is private; there is no public owned constructor, `seal`,
+`isSealed`, resource list, or state getter. Validation failures use static
+privacy-safe messages and retain neither rejected resources nor caller
+iterables.
+
+The private ledger has only these legal transitions:
+
+```text
+successful construction: accepting → sealed → disposing → disposed
+construction rollback:   accepting → disposing → disposed
+```
+
+It has no observable state. `AppDependencyGraph.dispose()` is a non-`async`
+method that returns the memoized completion directly, preserving `Future`
+identity. Dependencies remain structurally readable after disposal; revoking
+or nulling them would turn lifecycle into observable application state without
+making an already-held facade safe. Calling a disposed dependency is a caller
+ownership violation and follows that dependency's own behavior.
+
+Graph handoff has two legal pre-owner paths: `unclaimed → claimed` or
+`unclaimed → disposalRequested`. Before claim, the composition root is the
+only disposal authority. After claim, the root owner is the only production
+disposal authority. A pre-handoff disposal request is synchronous and makes a
+later claim fail; claim is one-shot and has no replacement transition.
+
+While any app-resource disposer is active, calling `dispose()` on a graph whose
+disposal has not started or is still in flight fails synchronously with a
+static, privacy-safe `StateError`. A target that has already completed disposal
+returns its memoized Future even from that disposer Zone. This prevents direct,
+indirect, and independently-started graph disposal cycles without making a
+completed target unusable or introducing a public dependency graph. An
+external caller outside the disposer Zone always receives the target's
+memoized disposal completion. The generic graph does not impose timeout,
+cancellation, or retry; each concrete I/O resource owns those policies.
+
+Disposal aggregates contain a shallow unmodifiable snapshot of each original
+error object and original stack in actual disposal order. Their stable
+`toString()` is privacy-safe, but the contained objects and stacks are
+sensitive and can include paths, URIs, or provider data. They never enter UI or
+`AppLogger`; a future remote reporter must scrub them. The stack passed with an
+aggregate callback is the aggregate throw-boundary stack. There is no synthetic
+combined stack; original stacks remain on the individual failure records.
+
+Rollback collection and normal teardown reporting are deliberately different.
+During construction, `AppResourceRollbackFailureCollector` and its
+`captureRollbackFailure` parameter are a non-reporting secondary collector.
+Startup first reports the primary construction failure and only then reports
+the collected cleanup aggregate. A broken collector is suppressed so it cannot
+escape to the root Zone before the primary error. During normal root teardown
+there is no construction primary, so the owner's separate latest accepted
+failure callback may report directly; if that callback fails, its failure is
+forwarded once to the captured Zone.
 
 During the short pre-UI interval the composition root owns a successfully
 constructed graph. Page-catalog or synchronous `runApp` failure reports the
@@ -502,32 +590,36 @@ failure never blocks cleanup. Successful `runApp` hands ownership to
 the root lifecycle adapter. Normal widget teardown initiates graph disposal and
 offers one aggregate to the latest failure callback.
 
+The owner keeps the last accepted graph, child, and failure callback. Updating
+the same graph adopts the new child and callback. An invalid replacement leaves
+all previously accepted values intact, and the rejected graph remains owned by
+its caller. One-shot claim is an explicit ownership contract rather than an
+unforgeable capability: composition and architecture tests ensure no other
+production holder disposes a claimed graph. Ownership-token machinery would
+add complexity without a current competing owner.
+
 Successful `runApp` return means root attachment was scheduled, not that the
 first frame mounted. The scaffold deliberately has no mount completer,
 ownership state machine, generic shutdown barrier, or live graph replacement.
 
-Graph construction may directly register a simple app-owned leaf:
-
-```dart
-final eventBus = resources.register(
-  AppEventBus(),
-  (eventBus) => eventBus.dispose(),
-);
-```
-
 A capability with private clients, repositories, subscriptions, or partial
 rollback rules is constructed by a cohesive module factory. The application
-stack registers only the returned module and exposes only its application
-facade. Do not register process-global Firebase registries, externally supplied
-test fakes, or private resources already owned by a module. If an async module
-factory allocates internal resources and throws before returning an owner, it
-must attempt all internal cleanup, preserve the primary error and stack, and
-surface cleanup failures separately. A disposer must not recursively await the
-stack that currently owns it. Foundation resources are created first so LIFO
-teardown closes their dependents first.
+registrar records only the returned module and exposes only its application
+facade. The reference Database→Catalog→Ordering composition remains
+explicit. It may be split into private typed subordinate functions only after
+size or reuse provides evidence; `lib/app/di/modules` is reserved for concrete
+resource-owning technical/platform composition, not arbitrary wiring groups.
+No universal `Module` interface is introduced. Do not register process-global
+Firebase registries, externally supplied test fakes, or private resources
+already owned by a module. If an async module factory allocates internal
+resources and throws before returning an owner, it must attempt all internal
+cleanup, preserve the primary error and stack, and surface cleanup failures
+separately. Foundation resources are created first so LIFO teardown closes
+their dependents first.
 
-Production composition registers the physical database exactly once and then
-constructs lifecycle-free Catalog and Ordering facades over borrowed stores:
+The reference production composition registers the physical database exactly
+once and constructs lifecycle-free Catalog and Ordering facades over borrowed
+stores:
 
 ```dart
 final databaseConfiguration = await createAppDatabaseConfiguration(
@@ -550,13 +642,12 @@ final ordering = createOrderingFacade(
   productOffers: CatalogProductOfferAdapter(catalogApplication.productOffers),
   utcNow: () => DateTime.now().toUtc(),
 );
-
-return AppDependencies(
-  catalog: catalogApplication.facade,
-  ordering: ordering,
-  eventBus: eventBus,
-);
 ```
+
+The application catalog exposes `catalogApplication.facade` and `ordering`
+only while they have accepted app-lifetime consumers or an explicitly bounded,
+tested consumer gap recorded in the roadmap. The Product Offers view, ACL,
+repositories, stores, clock, and database module remain private to composition.
 
 `AppDatabaseStores` is an app-composition-only typed facade. Each context owns
 its immutable store bundle and synchronous assembly, while the database module
@@ -575,10 +666,14 @@ Presentation sees only `CatalogFacade` or `OrderingFacade`. A repository with
 no owned resource is not wrapped in a disposable module merely because more
 repositories are added.
 
-`AppDependencies` contains `OrderingFacade` only because the immediately
-following presentation phase creates the real Order Composer consumer. This
-one-phase gap is explicit and may not be generalized into permission to expose
-unused ports.
+The same generic primitives also support a derived feature-layered application:
+its app factory may return a typed catalog of app-local application ports
+without introducing bounded-context packages. This does not change this
+scaffold's boundary: its current `lib/feature` tree is presentation-only, and
+business domain/application/infrastructure code remains in real bounded-context
+packages. The flat catalog grows by explicit constructor fields. It is not
+replaced with dynamic lookup or nested catalogs merely to avoid compile-time
+changes.
 
 At the SQLite boundary only primary `BUSY` and `LOCKED` result codes, including
 their extended variants, become sanitized temporary
@@ -774,15 +869,20 @@ The composition root narrows the value immediately:
 ```dart
 final configuration = loadAppStartupConfiguration();
 
-final graph = await graphBuilder.build(
+final graph = await buildAppDependencyGraph<AppDependencies>(
   dependenciesFactory: (resources) => buildAppDependencies(
     resources,
     storageConfiguration: configuration.storage,
     catalogConfiguration: configuration.catalog,
   ),
-  onRollbackFailure: recordRollbackFailure,
+  captureRollbackFailure: collectRollbackFailure,
 );
 ```
+
+The rollback callback only collects secondary cleanup information. If the
+factory fails, startup reports the preserved primary error first and the
+collected aggregate second; it does not report from inside the graph
+transaction.
 
 `buildAppDependencies` passes `catalogConfiguration` only to the Catalog
 composition factory or module. The BLoC receives `CatalogFacade`; it never sees
@@ -898,12 +998,13 @@ boundary. Previous handlers are chained once; their own failures are reported
 as secondary `APP-HANDLER-001` diagnostics. The platform wrapper returns `true`
 because the application boundary handled the error.
 
-`AppErrorReporter` receives a `SafeDiagnosticContext`. Graph rollback and root
-lifecycle disposal receive a DI-owned aggregate-failure
-callback after the caller has bound the diagnostic context. Reporter failure
-is reduced to `APP-REPORT-001` without recursively calling the failed reporter.
-Vendor automatic global handlers must not be enabled alongside this
-application-owned boundary.
+`AppErrorReporter` receives a `SafeDiagnosticContext`. Graph rollback sends a
+DI-owned aggregate only to a non-reporting collector so startup can preserve
+primary-first outward reporting. Normal root-lifecycle disposal may send its
+aggregate to the owner's reporting callback because no construction primary is
+pending. Reporter failure is reduced to `APP-REPORT-001` without recursively
+calling the failed reporter. Vendor automatic global handlers must not be
+enabled alongside this application-owned boundary.
 
 ## Feature DI lifetime
 
