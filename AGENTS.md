@@ -24,14 +24,21 @@ staging, runtime use, or dependency expansion out of order.
 - `lib/main.dart`: application composition root and startup fallback.
 - `lib/app`: application policy, wrappers, app-wide notification contracts, and UI composition.
 - `lib/app/startup`: process-global framework and required SDK preparation.
-- `lib/app/diagnostics`: root error boundaries, logger/reporter policy, and
-  privacy-safe diagnostics.
+- `lib/app/diagnostics/logging`: app-shell typed log-record SPI, local logger
+  projection, and BLoC observer.
+- `lib/app/diagnostics/error_reporting`: root error boundary, privacy-safe
+  error formatting, and strict local/no-op reporting.
+- `lib/app/diagnostics/logging/support_log`: reserved for the later
+  root-isolate persistent support-log capability; the roadmap, not target
+  documentation, determines when it is accepted.
 - `lib/app/environment`: immutable public client configuration.
 - `lib/app/di`: generic graph transaction, register-only resource capability,
   private-ledger ownership, rollback, app dependency construction, and
   root-lifecycle handoff.
-- `lib/app/di/modules`: concrete app-owned infrastructure composition and
-  platform adapters; graph primitives outside this subtree stay Flutter-free.
+- `lib/app/di/modules`: concrete graph-owned infrastructure composition and
+  its platform adapters; graph primitives outside this subtree stay
+  Flutter-free. A process-root adapter stays with its owning app capability
+  instead of being placed here merely because it is platform-specific.
 - `lib/core/di/typedefs`: construction-only `Factory` vocabulary.
 - `lib/core/event_bus`: domain-neutral best-effort event delivery mechanism.
 - `lib/app/events`: application-wide best-effort `AppEvent` contracts for
@@ -79,6 +86,11 @@ require a Flutter device.
 - Use package imports in production `lib/` code.
 - Use point imports for app-internal subsystems. Do not add nested dump-barrels
   without a reviewed external API boundary.
+- Decompose files by cohesive responsibility and useful dependency/review
+  boundaries, not by a mechanical one-class-per-file rule. Keep a substantial
+  implementation separate from its stable port when that reduces consumer
+  coupling; a trivial null object and closely related immutable records may
+  remain in one cohesive library.
 - Name authored files and directories with `lowercase_with_underscores`, except
   for ecosystem-standard root files such as `README.md` and `AGENTS.md`.
 - Separate `return` from a preceding statement in the same block with one blank
@@ -86,7 +98,9 @@ require a Flutter device.
   in that block.
 - Prefer composition over inheritance.
 - Keep Environment and DI graph primitives Flutter-free. Isolate a required
-  Flutter plugin behind its concrete `app/di/modules` platform adapter.
+  Flutter plugin behind the concrete adapter owned by its lifecycle
+  capability; graph-owned adapters belong under `app/di/modules`, while the
+  future process-root support-log adapters belong to Diagnostics.
 - Never put secrets in Flutter dart-defines.
 - Declare every Dart environment key in `AppEnvironmentKeys`; only
   `app_environment_loader.dart` reads it with `String.fromEnvironment`.
@@ -191,7 +205,58 @@ require a Flutter device.
 - Do not create a second DAO interface underneath a public narrow store without
   a second implementation or another real boundary. Repositories without owned
   resources are collaborators, not disposable runtime modules.
-- Never log raw errors, configuration values, BLoC events, or state payloads.
+- Never log raw errors, configuration values, BLoC events, state/action
+  payloads, arbitrary messages, or metadata maps. `AppLogRecord` is an open
+  but trusted outer-application SPI: every production record is a final
+  app-owned subclass that extends the base, owns one static descriptor, and
+  projects one closed typed shape synchronously. It never starts async work or
+  selects its name, version, severity, or data class at runtime. Workspace
+  packages and features neither import nor extend the SPI; a capability that
+  genuinely emits diagnostics owns a narrower semantic port. Its first real
+  outer adapter belongs under `app/diagnostics/logging/adapters`, imports only
+  that inward port plus the logger and concrete records, and is accepted with
+  an exact import guard. Do not create the directory or a generic adapter base
+  in advance. Runtime types are debug-only breadcrumbs, not stable identifiers,
+  persisted fields, or analytics dimensions.
+- Keep logging and error reporting as separate subsystems under the one
+  Diagnostics capability. `AppLogger` accepts approved typed records and no
+  raw failures. `AppErrorReporter` alone accepts an error and nullable original
+  stack. `AppErrorBoundary` records one support-safe error-kind breadcrumb
+  before invoking the raw reporter and reduces reporter failure to one fixed
+  logger record; neither subsystem is a generic sink for the other.
+- Keep `AppLogger.log` synchronous and no-throw. An implementation never marks
+  it `async`, reenters itself, calls the error boundary/reporter, or installs
+  global handlers. A future persistent module may start only an owned, tracked,
+  contained drain after its synchronous enqueue handoff; detached work remains
+  forbidden.
+- Keep `AppErrorReporter` strict and asynchronous: its Future covers all work
+  it starts. Profile and release error-report output exposes only stable
+  support codes; raw stacks remain local debug detail and are never
+  remote-ready data. Approved typed logger records remain separate.
+- Keep `AppErrorReportKind` a closed list of real root/orchestration ingress.
+  It is not severity, expectedness, retry policy, analytics vocabulary, or a
+  catalog of feature failures.
+- `AppErrorBoundary` owns the guarded Zone and Flutter/platform callbacks only
+  for the root application isolate. It never invokes previously installed
+  handlers, never fabricates a missing stack, and remains backed by one fixed
+  local or no-op reporter until a provider ADR defines handoff and ownership.
+  Its distinct per-instance logger and reporter Zone markers suppress only
+  same-boundary reentry. Direct `report` is permitted while created or active;
+  after disposal it remains best-effort/no-throw only for unavoidable late
+  callbacks, not deliberate new work. A Flutter/widget/integration test that
+  installs the boundary restores it in `finally` before a test-body failure can
+  escape; `addTearDown` alone runs too late for Flutter test error handling.
+- Persistent support logging is a later phase, not part of Diagnostics Core.
+  Its `AppLoggingModule` is owned by the root isolate outside
+  `AppDependencyGraph`, accepts only support-safe typed projections, and may
+  degrade to bounded memory without failing the functional application. It is
+  never exposed through `AppDependencies`; native cache files, Web IndexedDB,
+  versioned NDJSON export, retention, and platform dependencies enter
+  atomically with that phase. Do not add a public purge, upload, support UI,
+  remote transport, generic sink, registry, or provider handoff in advance.
+- Determine expected failures from the exact operation contract, not from the
+  Dart `Exception` marker. Use `rethrow` for the same object and
+  `Error.throwWithStackTrace` when translating a recognized boundary failure.
 - Register every graph-owned resource immediately and exactly once. Never
   register borrowed resources or private internals already owned by a module,
   and never retain `AppResourceRegistrar` after graph construction.
@@ -267,7 +332,8 @@ require a Flutter device.
 - `AppEventBus` has no replay. A screen-lifetime consumer observes only events
   published while its screen exists.
 - `AppErrorBoundary` is the sole reporter of unhandled BLoC failures; the global
-  BLoC observer emits type-only debug breadcrumbs.
+  BLoC observer emits debug-only type breadcrumbs through `onChange` for both
+  Bloc and Cubit and does not duplicate them through `onTransition`.
 - Page builders are synchronous and non-owning. They use `route.pageKey`,
   dispatch by exact route type, and never start I/O or allocate disposable
   resources.

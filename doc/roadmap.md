@@ -44,24 +44,24 @@ The local Git history has accepted these autonomous batches:
 | `f6b2243` | Consolidated Architecture Source of Truth v8 |
 | `0b61dd6` | Flutter 3.47 platform and toolchain baseline |
 | `7b710f3` | Ordering bounded context and Catalog ACL |
-| Revision containing this roadmap | App-owned dependency graph |
+| `538e194` | App-owned dependency graph |
+| Revision containing this roadmap | Application diagnostics |
 
-The DI row uses a self-reference because a commit cannot contain its own final
-hash. The next accepted roadmap update replaces it with that revision's hash.
+The Diagnostics row uses a self-reference because a commit cannot contain its
+own final hash. The next accepted roadmap update replaces it with that
+revision's hash.
 
 The accepted repository therefore contains the `bounded_contexts/libraries`
 package taxonomy, a shared physical database, the Catalog business context,
 the Ordering bounded context and Catalog ACL, and the Flutter 3.47/Dart 3.13
-platform baseline. The revision containing this snapshot accepts the app
-dependency graph, but not a live application runtime built on the context
-facades.
+platform baseline and app dependency graph. The revision containing this
+snapshot accepts application diagnostics, but not live Startup wiring.
 
 The working tree contains later implementations so adjacent APIs can be
-developed and tested together. Diagnostics, UI kit, routing, presentation,
-startup, and integration scenarios remain review candidates until their own
-commits.
+developed and tested together. UI kit, routing, presentation, startup, and
+integration scenarios remain review candidates until their own commits.
 
-## Accepted by this revision: App-owned dependency graph
+## Accepted in `538e194`: App-owned dependency graph
 
 The DI design audit is complete. Accept the app-local implementation with:
 
@@ -92,31 +92,71 @@ production composition but is not yet live runtime wiring.
 The autonomous DI snapshot passed isolated analysis, tests, DartDoc, full
 quality checks, and staged review without blocker, high, or medium findings.
 
-## Next review: Application diagnostics
+## Accepted by this revision: Application diagnostics
 
-**Entry criterion:** DI is accepted.
+Diagnostics Core v5.2.2 supersedes the unaccepted v5.2.1 candidate after an
+exact staged usage-scenario and reviewability audit. It remains one app-owned
+capability with sibling
+`logging` and `error_reporting` directories. This isolated phase accepts:
 
-Move app-owned root diagnostics and the BLoC observer to
-`lib/app/diagnostics`. `lib/core/diagnostics` is not retained for app-specific
-support codes, Flutter handlers, logging policy, or reporter policy.
+- the open but trusted `AppLogRecord` SPI, static typed descriptors, typed
+  field writer, a stable logger/null-object port library, a separately imported
+  synchronous developer implementation, and fail-closed privacy projection;
+- six final debug-only BLoC/Cubit record classes and two support-safe error
+  record classes (`error_reported` and `reporter_failed`);
+- closed `AppErrorReportKind`, strict asynchronous local/no-op reporters, and
+  debug versus profile/release formatting;
+- one root Flutter-isolate Zone and global-handler owner with privacy-first
+  non-chaining restoration, distinct per-boundary logger/reporter recursion
+  containment, and primary-before-reporter ordering;
+- constructor-injected type-only BLoC/Cubit observation.
 
-Introduce a synchronous non-owning `AppLogger`, `DeveloperAppLogger`, no-op
-implementation, and recording tests. Logger records contain stable event names,
-approved runtime types, and optional duration only. They never contain raw
-errors, stacks, messages, configuration, credentials, analytics properties, or
-BLoC payloads.
+The public logger signature remains synchronous `void`; production
+implementations cannot be `async`, reenter reporting, or create unowned work.
+Direct boundary reporting is valid while created or active, whereas a disposed
+boundary accepts only unavoidable best-effort late callbacks. A test-only final
+support record proves the open SPI and every typed writer role without adding a
+placeholder production event.
 
-Use an `AppErrorReporter` interface with local, no-op, and test recording
-implementations. `AppErrorBoundary` remains the sole owner of the root Zone and
-Flutter/platform handlers. The BLoC observer emits type-only breadcrumbs and
-does not report failures. Environment failures remain local-only. No remote
-reporter registry or delegating transport is created before a provider exists.
+The complete normative privacy, coverage, lifecycle, expectedness, and future
+provider contract is maintained in
+[Diagnostics and error-handler lifecycle](architecture.md#diagnostics-and-error-handler-lifecycle),
+not repeated here.
 
-**Acceptance:** hostile `toString`, privacy, original stacks, handler ownership,
-reporter/logger failure isolation, stable breadcrumbs, and exactly-once
-unhandled BLoC reporting are tested.
+The accepted `main.dart` does not yet construct Diagnostics. This bounded
+runtime-consumer gap expires in Startup, after UI kit and presentation APIs are
+accepted. Startup record classes are not part of Core and arrive only with
+their real Startup consumer. If Startup is cancelled or materially redesigned,
+the unused boundary and observer extension points are re-reviewed rather than
+retained by inertia.
 
-## Enterprise UI kit
+This phase does not accept `AppLoggingModule`, a support-log exporter, native
+cache or Web IndexedDB adapters, persistence dependencies, Startup records,
+remote transport, analytics, or Support UI. The 4-KiB bound is intentionally
+not a Core assertion: it applies to a complete canonical persisted line,
+including the future storage envelope and final LF, and begins with the Storage
+phase.
+
+The first real implementation of a capability-owned narrow logging port will
+live under `app/diagnostics/logging/adapters` with an exact inward-port import
+allowlist. No adapter directory, base class, registry, or business import
+exception exists before that consumer.
+
+The isolated root-manifest delta is limited to `flutter_bloc: 9.1.1` and
+`ephemeral_bloc` at exact Git revision
+`35d963ed5f083db540a51df9bf30d4c93e858632`, plus their lockfile resolution.
+It introduces no support-log storage dependency.
+
+Any widget or process-isolated integration scenario that later installs the
+boundary uses a recording reporter and asserts the complete expected record
+set; the normal scenario requires no records. The boundary deliberately does
+not invoke a previously installed Flutter test handler.
+
+Remote diagnostics and analytics remain separate capability gates. No provider
+registry, transport, queue, interceptor pipeline, or analytics event hierarchy
+is accepted by this revision.
+
+## Next review: Enterprise UI kit
 
 **Entry criterion:** diagnostics is accepted. The package itself does not
 depend on diagnostics.
@@ -175,25 +215,66 @@ top-level `initializeAppFramework` function. Remove the production
 The startup transaction is:
 
 ```text
-install AppErrorBoundary
-→ start Stopwatch
+construct one logger, one fixed local/no-op reporter, and one narrow boundary factory
+→ install AppErrorBoundary
+→ set debug zone-mismatch policy before binding
+→ initialize Flutter binding inside the guarded Zone
+→ start Stopwatch and log AppStartupStartedLogRecord
 → load AppStartupConfiguration
-→ initializeAppFramework
+→ initialize Environment-dependent framework/SDK capabilities
 → build and validate route registry
 → build dependency graph
 → build and validate Page catalog
+→ log AppStartupCompletedLogRecord
 → runApp
 → hand the graph to one root lifecycle owner
 ```
 
-Environment failures are local-only. Graph-build rollback completes before the
-primary construction error is returned; outward reporting remains primary
-before secondary cleanup diagnostics. Reporter failure cannot block cleanup.
-Fallback mounting occurs only after cleanup, and fallback mount failure escapes
-to the root Zone.
+The binding is a minimal configuration-free prelude; Environment-dependent SDK
+work remains after validated Environment. The transitional injection seam is
+one optional `AppLogger`, one optional `AppErrorReporter`, and one narrow
+boundary factory that receives those exact collaborators. An independently
+injected logger and prebuilt boundary are not accepted together. Environment
+failures remain local-only with respect to remote providers. Graph-build
+rollback completes before the primary construction error is returned; outward
+reporting remains primary before secondary cleanup diagnostics. Reporter
+failure cannot block cleanup. Fallback mounting occurs only after cleanup, and
+fallback mount failure escapes to the root Zone.
 
 **Acceptance:** environment, framework, graph, Page, handoff, cleanup, reporter,
-and fallback failures preserve original stacks and ownership.
+fallback failures, logger identity, binding Zone, and Startup record ordering
+preserve original stacks and ownership.
+
+## Persistent Support Log
+
+**Entry criterion:** Startup has one stable logger identity and boundary
+factory, and exact persistence dependency pins have been reviewed against the
+accepted Flutter baseline.
+
+Add the root-isolate `AppLoggingModule` as an autonomous Storage phase. It is
+owned by the composition root outside `AppDependencyGraph`, starts with bounded
+memory, may activate native cache or Web IndexedDB after binding and before
+Environment, and degrades to memory-only without failing the functional app.
+This phase atomically replaces Startup's standalone logger seam with the module
+seam; both forms never coexist.
+
+Add the bounded ring/queue, exact source constants, native segmented NDJSON and
+Web IndexedDB stores, internal health counters/entries, timeout and late-
+completion containment, and privileged in-memory NDJSON snapshot exporter.
+Only this phase may add its exact pinned persistence dependencies and platform
+files. The exporter remains outside `AppDependencies` until a real Support UI
+consumer exists; no upload, public purge, remote reporter, analytics, or
+controlled production shutdown is implied.
+
+The complete lifecycle, storage, privacy, export, and 4-KiB canonical-line
+contract is maintained in
+[Diagnostics and error-handler lifecycle](architecture.md#diagnostics-and-error-handler-lifecycle),
+not repeated here.
+
+**Acceptance:** activation/disposal/export races are bounded; timeouts are not
+treated as cancellation; memory, queue, persisted-data, segment, and output
+bounds are exact; native and real-Chrome storage tests pass; exported data has
+no raw failure, stack, runtime type, private writer ID, or unsupported field.
 
 ## Integration scenarios
 
@@ -290,8 +371,17 @@ criterion exists:
 
 - **remote reporting:** concrete provider, consent, scrubbing, timeout, flush,
   and recursion policy;
+- **browser-JavaScript or native-crash capture:** a selected provider/runtime
+  hook, coverage boundary, privacy policy, and deduplication relationship with
+  the app-owned root boundary;
 - **analytics:** provider, consent, data governance, bounded event vocabulary,
   and cardinality policy;
+- **Support UI/exporter composition:** a real user support workflow that needs
+  the least-authority snapshot role;
+- **public support-log purge:** an account/logout, privacy-erasure, or other
+  concrete deletion workflow with explicit ownership and policy;
+- **support-log encryption at rest:** a threat-model change that requires
+  protection beyond private app storage and bounded retention;
 - **feature flags and engineer menu:** real runtime flag or QA override need;
 - **session or tenant graph:** authenticated capability and explicit
   quiescence/data-partition policy;
@@ -310,6 +400,16 @@ criterion exists:
 - **full multiplatform CI:** an accepted supported-target matrix;
 - **multi-tab Web persistence:** a product requirement beyond the current
   storage policy;
+- **shared-origin Web namespace:** deployment of multiple applications under
+  one origin with reviewed ownership and migration;
+- **native multi-process support logging:** a real second-process writer and a
+  coordination/durability contract;
+- **audit or security logging:** a regulatory/security requirement with its own
+  integrity, access, retention, and delivery policy;
+- **second production log destination or fan-out:** a real destination whose
+  delivery and lifecycle cannot be represented by the existing local targets;
+- **Diagnostics package extraction:** independent reuse, versioning, team
+  ownership, or delivery rather than repository symmetry;
 - **Ordering named Drift query:** a future API that proves equivalent reactive
   invalidation;
 - **AGP legacy bridge removal:** a Flutter Gradle plugin proven to support the
@@ -328,7 +428,8 @@ The consolidated target is complete only when:
 - Ordering and its Context Map edge are accepted separately from app DI;
 - DI has passed the independent design audit and real database-to-context
   teardown tests;
-- app-owned diagnostics and the autonomous UI kit are accepted;
+- Diagnostics Core, Persistent Support Log, and the autonomous UI kit are
+  accepted;
 - Catalog and Order Composer are facade-only real consumers with generated
   localization;
 - static startup coordination and the production Page-catalog replacement seam

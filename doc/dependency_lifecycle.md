@@ -17,6 +17,7 @@ contract or a service-locator framework.
 | Lifetime | Typical owner | Examples |
 |---|---|---|
 | Process-global | Framework or concrete SDK initializer | Flutter binding, URL strategy, default Firebase initialization, FCM background-handler registration |
+| Root Flutter isolate | Application composition root outside the dependency graph | `AppErrorBoundary`, application BLoC observer, future `AppLoggingModule` |
 | Application | Returned app graph and its root lifecycle owner | Cohesive app/context modules registered during dependency composition |
 | Session/tenant | Authenticated flow-shell owner, only after a real requirement exists | User-keyed cache, authenticated socket, tenant database |
 | Feature/flow | Feature scope or flow-shell provider | BLoC shared by several feature routes |
@@ -43,16 +44,19 @@ For each concrete integration, answer in order:
 
 1. Does the SDK require process-global preparation before any owned instance
    can exist? Put only that preparation in the framework initializer.
-2. Is this one simple app-owned leaf with no private construction transaction?
+2. Must the capability record Environment or graph build/disposal failures and
+   therefore outlive the application graph? Keep that reviewed process-root
+   owner with its capability; do not force it into `app/di/modules`.
+3. Is this one simple app-owned leaf with no private construction transaction?
    Create it in the app dependency factory and register it immediately.
-3. Does the integration contain private clients, repositories, subscriptions,
+4. Does the integration contain private clients, repositories, subscriptions,
    or internal partial rollback? Let a concrete module factory own them and
    register the returned module once.
-4. Is an SDK value borrowed from a process-global registry? Keep it local and
+5. Is an SDK value borrowed from a process-global registry? Keep it local and
    do not register it.
-5. Does presentation need the concrete client or repository? No: expose the
+6. Does presentation need the concrete client or repository? No: expose the
    owning capability's application facade, command, query, or use case instead.
-6. Is the resource tied to a Page or one operation? Keep it out of the app
+7. Is the resource tied to a Page or one operation? Keep it out of the app
    graph and use the narrower owner.
 
 Do not add a module class for one ordinary object with no private lifecycle or
@@ -189,63 +193,66 @@ runtime and maintenance cost without behavior.
 
 ### Logger and startup timing
 
-A synchronous developer logger is created by the composition root before
-framework initialization. It is not a disposable graph module and is not added
-to `AppDependencies` merely to make it globally reachable:
+Diagnostics Core deliberately has no live `main.dart` consumer. It provides a
+synchronous logger, a strict asynchronous local/no-op reporter, a root boundary,
+and the BLoC observer as tested extension points. Raw errors and nullable
+original stacks go only to `AppErrorReporter`; approved records go only to
+`AppLogger`. Logger implementations complete validation and their synchronous
+sink/enqueue handoff before returning; they never call the boundary or reporter.
+The boundary may be reported to explicitly before `run`, without installing
+handlers or claiming the global lease, while automatic coverage begins only in
+`run`.
 
-```dart
-void runApplication({
-  AppLogger logger = const DeveloperAppLogger(),
-}) {
-  errorBoundary.run(() async {
-    final stopwatch = Stopwatch()..start();
+The later Startup phase creates exactly one logger identity, one fixed local or
+no-op reporter, and one boundary made by a narrow factory that receives those
+exact collaborators. It does not accept both a prebuilt boundary and an
+independent logger, because that permits the boundary, Startup, and observer to
+emit through different identities. Startup also adds its two concrete record
+classes; Diagnostics Core does not predeclare them.
 
-    logger.log(
-      level: AppLogLevel.info,
-      event: 'app_startup_started',
-    );
+The practical order is:
 
-    final configuration = loadAppStartupConfiguration();
-    await initializeAppFramework(
-      environment: configuration.environment,
-      logger: logger,
-    );
-
-    final graph = await buildAppDependencyGraph<AppDependencies>(
-      dependenciesFactory: (resources) => buildAppDependencies(
-        resources,
-        storageConfiguration: configuration.storage,
-      ),
-      captureRollbackFailure: collectRollbackFailure,
-    );
-    final pages = buildAppPages(dependencies: graph.dependencies);
-
-    stopwatch.stop();
-    logger.log(
-      level: AppLogLevel.info,
-      event: 'app_startup_completed',
-      elapsed: stopwatch.elapsed,
-    );
-
-    runApp(
-      AppDependencyGraphOwner(
-        graph: graph,
-        onDisposalFailure: reportDisposalFailure,
-        child: App(pageBuilder: pages.build),
-      ),
-    );
-  });
-}
+```text
+construct logger and fixed reporter
+→ construct boundary from those exact collaborators
+→ boundary.run
+    → set debug zone-mismatch policy
+    → initialize Flutter binding
+    → log AppStartupStartedLogRecord
+    → load Environment
+    → initialize Environment-dependent framework/SDK capabilities
+    → build route registry, graph, and Page catalog
+    → log AppStartupCompletedLogRecord
+    → runApp and hand graph ownership to the root widget
 ```
 
-This is the target wiring for the diagnostics and startup phases. Logger events
-remain sanitized; raw errors and stack traces go to `AppErrorReporter`, not to
-`AppLogger`. A buffered or remote logging transport would be a separate owned
-diagnostics module because it has flush and shutdown semantics.
-
-The abbreviated example omits the surrounding startup `try`/`catch`. Its exact
-rollback collection and normal-teardown reporting behavior is defined in
+The binding step is a minimal configuration-free prelude. It no longer
+contradicts the rule that Environment-dependent SDK initialization happens only
+after Environment validation. The abbreviated recipe omits the surrounding
+startup `try`/`catch`; primary-first graph rollback and reporting remain
+normative in
 [Build transaction and ownership](architecture.md#build-transaction-and-ownership).
+
+The Persistent Support Log phase later replaces the standalone logger seam
+atomically with one optional `AppLoggingModule`. The root composition owner
+constructs that module before the reporter and boundary, gives every consumer
+the exact `module.logger`, initializes the binding inside the boundary, then
+starts the module's documented non-failing persistence activation before
+Environment loading. It does not add the module or exporter to
+`AppDependencies`, and it does not create an Environment-derived storage
+namespace.
+
+The module remains outside the graph so it can record support-safe Environment,
+graph-build, rollback, disposal, and final-teardown breadcrumbs. This is a
+specific lifetime decision, not a general second graph. Its native and Web
+platform adapters colocate under `app/diagnostics/logging/support_log`; only
+graph-owned platform adapters belong in `app/di/modules`.
+
+Production does not pretend that Flutter supplies awaited process shutdown. A
+future controlled desktop or restart flow must first stop new work, await graph
+disposal and explicit reports, establish report/export quiescence, dispose the
+boundary, and only then await logging-module disposal. A timeout bounds waiting
+but does not cancel the provider operation beneath a Dart Future.
 
 ### Shared physical Drift module
 
@@ -410,10 +417,20 @@ Future<OperationResult> executeOperation(OperationInput input) async {
 
 ### Remote diagnostics
 
-- The synchronous logger remains outside `AppDependencies` unless an actual
-  downstream application service needs the port.
-- Sentry, Crashlytics, or another buffered/remote transport is a separate
-  graph-owned diagnostics module.
+- The app-wide `AppLogger` remains outside `AppDependencies`. A downstream
+  capability with a real need owns a narrower semantic port; the app adapter
+  translates that port to one reviewed record type. Its first concrete
+  implementation belongs under `app/diagnostics/logging/adapters`, is
+  stateless/non-owning, and imports only that exact inward port plus the logger
+  and record. No directory, adapter base, or generic translation registry is
+  created before the consumer.
+- The accepted root boundary keeps one fixed local or no-op reporter. It does
+  not expose a mutable provider registry.
+- Sentry, Crashlytics, or another buffered transport requires a reviewed
+  reporter-handoff policy. Its SDK resource may later be graph-owned, but the
+  boundary is installed before that graph and cannot borrow it implicitly.
+- The future persistent support log is bounded local operational history, not a
+  reporter placeholder or automatic upload queue.
 - Features do not receive a global logger by default. Raw errors,
   configuration, BLoC events, and state payloads are never logged.
 

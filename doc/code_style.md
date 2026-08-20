@@ -39,6 +39,12 @@ Application lifecycle and placement decisions belong in
   unless it represents a reviewed API boundary with real external consumers.
 - Keep imports in analyzer-enforced directive order.
 - Do not import another package's implementation libraries.
+- Split a source file when doing so creates a meaningful responsibility,
+  dependency, or review boundary. Do not apply one-class-per-file
+  mechanically: a trivial null object may remain beside its port, and closely
+  related immutable records may share one cohesive library. Conversely, keep a
+  substantial implementation in its own point-import library when ordinary
+  consumers need only the stable port.
 - Remove dead and commented-out implementations; version control preserves
   history. A short placement-oriented snippet in DartDoc or an extension point
   is allowed when it teaches the documented scaffold contract; detailed SDK
@@ -63,7 +69,12 @@ if (!isSupported) {
 - Prefer immutable values, `final` concrete classes, `const` constructors where
   semantically useful, and constructor injection.
 - Use `abstract interface class` only for a real behavioral substitution point.
-- Declare public API types explicitly and avoid `dynamic` calls.
+- Declare public API types explicitly and avoid `dynamic` calls. For private
+  and local declarations, prefer inference when the initializer already makes
+  the exact intended static type obvious. Keep an explicit type when it widens
+  or narrows inference, represents nullable lifecycle state, disambiguates an
+  empty collection, or documents another non-obvious contract. Omit collection
+  literal type arguments when context or elements determine them unambiguously.
 - Use named parameters for booleans and for arguments whose meaning is not
   obvious at the call site.
 - Use initializing formals, including Dart primary-constructor syntax, when
@@ -139,7 +150,9 @@ part 'profile_state.dart';
 - `analysis_options.yaml` groups rules by type safety, async/resource safety,
   correctness, boundaries, maintainability, Dart idioms, readability, and
   Flutter-specific behavior.
-- Strict casts, strict inference, and strict raw types remain enabled.
+- Strict casts, strict inference, and strict raw types remain enabled. Strict
+  inference rejects insufficient type information; it does not require
+  repeating a type that is already obvious from an initializer.
 - Only `build/**` is globally excluded from analysis. Generated source inside
   authored directories is not silently exempted by a broad path pattern; each
   generator integration must define and justify any narrower policy it needs.
@@ -161,11 +174,41 @@ part 'profile_state.dart';
 
 ## Errors and diagnostics
 
-- Preserve primary errors with `Error.throwWithStackTrace`.
+- Model each operational breadcrumb as one final app-owned class that extends
+  `AppLogRecord`. Group related records by cohesive concern; do not recreate a
+  central factory catalog or put every record in a separate file by rule.
+- Give each production record one static descriptor and a synchronous
+  `project` implementation that returns `AppLogProjectionResult.complete`.
+  Projection code performs no I/O, scheduling, logging, reporting, lookup, or
+  payload stringification.
+- Keep `AppLogger.log` synchronous `void` and no-throw. Do not implement it as
+  `async`, reenter the logger, call the error boundary/reporter, or install
+  global handlers. An owning module may start only tracked and contained work
+  after its synchronous enqueue handoff.
+- Write fields only through the narrow typed writer. Runtime `Type` belongs to
+  `debugType`; support fields use reviewed flags, counts, durations, and stable
+  codes rather than strings, identifiers, objects, or metadata collections.
+- Place the first implementation of a capability-owned semantic logging port
+  under `app/diagnostics/logging/adapters` only with its real consumer. It may
+  import that exact inward port, while records remain feature- and domain-free.
+- Gate diagnostic detail with `kDebugMode`. A test override may reduce detail
+  but never enable debug projection in profile or release; do not select this
+  policy with `kReleaseMode`.
+- Catch only the exact failures owned by the current operation contract.
+  Implementing `Exception` does not make an arbitrary failure expected, and
+  `Error` is not converted by a generic catch into an expected result.
+- Use `rethrow` when propagating the same failure object. When translating a
+  recognized boundary condition into a new owner-specific failure, preserve
+  the caught stack with `Error.throwWithStackTrace`.
+- Use `return await` inside a `try` block when its `catch` must observe an
+  asynchronous completion. Returning the Future directly bypasses that catch
+  after the synchronous call returns.
 - Do not call `toString()` on untrusted errors or render raw configuration.
 - Do not pass raw errors to logging APIs that may stringify them.
 - Cleanup and reporting failures must not replace a primary failure.
-- Release diagnostics contain stable support codes, not provider payloads.
+- Profile and release error-report output contains stable support codes, not
+  provider payloads, runtime types, or raw stacks. Typed `AppLogger`
+  breadcrumbs may still contain their approved stable event fields.
 
 ## Tests
 
@@ -176,5 +219,6 @@ part 'profile_state.dart';
   the Dart type system cannot express.
 - Integration tests invoke the production entrypoint and graph with an explicit
   public environment profile.
-- Startup integration scenarios run as separate processes because framework initialization,
-  global Flutter handlers, and the root zone have process lifetime.
+- Startup integration scenarios run as separate processes because framework
+  initialization, global Flutter handlers, and the root zone have
+  application-isolate lifetime.

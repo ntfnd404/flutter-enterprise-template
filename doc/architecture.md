@@ -42,9 +42,10 @@ of truth.
 | Component | Responsibility |
 |---|---|
 | `main` | One-line delegate to the testable application entrypoint |
-| `runApplication` | Environment loading, graph composition, ownership handoff, startup fallback |
+| `runApplication` | Root diagnostics, binding prelude, Environment loading, graph composition, ownership handoff, startup fallback |
 | `AppErrorBoundary` | Root zone, Flutter/platform handlers, injected safe reporting |
-| `initializeAppFramework` | Process-global framework and required SDK preparation |
+| `AppLoggingModule` | Future root-isolate support-log ownership outside the dependency graph |
+| `initializeAppFramework` | Environment-dependent process-global framework and required SDK preparation after the binding prelude |
 | `buildAppDependencies` | Concrete app-level Database→Catalog→Ordering composition |
 | `buildAppDependencyGraph<T>` | Generic transactional construction over one private resource ledger |
 | `AppDependencies` | Immutable downstream port/facade catalog without lifecycle APIs |
@@ -56,6 +57,9 @@ of truth.
 ```text
 main → runApplication
   → AppErrorBoundary installs Flutter/platform handlers and guarded root zone
+  → set debug zone-mismatch policy before binding initialization
+  → initialize the Flutter binding inside the guarded root zone
+  → future Persistent Support Log phase activates bounded local storage
   → load and validate AppStartupConfiguration
   → initializeAppFramework(configuration.environment, logger)
   → build and validate the route registry
@@ -68,14 +72,23 @@ main → runApplication
   → feature-owned Page composition
 ```
 
-The boundary is installed before Environment parsing, framework initialization,
-or a future vendor reporter. The environment is loaded before framework
-initialization because global SDK choices may be environment-dependent. Flutter
-binding initialization and `runApp` occur inside the same guarded zone. The
-route registry is evaluated before app-owned resources are created. Page
-composition occurs after graph construction and before ownership handoff.
-Subordinate builders are tested directly; production does not expose a generic
-Page-catalog replacement seam. Tests own and dispose an injected boundary.
+The boundary is installed before binding initialization, Environment parsing,
+or any future vendor reporter. In debug,
+`BindingBase.debugZoneErrorsAreFatal` is set before the binding exists; the
+binding is then initialized inside the guarded root zone. This configuration-
+free prelude is deliberately separate from `initializeAppFramework`, whose
+URL-strategy and required-SDK work may depend on the validated Environment.
+
+The later Persistent Support Log phase inserts bounded best-effort local
+activation after binding and before Environment parsing. That order permits a
+support-safe Environment failure to reach app-local storage without reading or
+persisting the rejected configuration. Until that phase is accepted, Startup
+uses the same sequence with the activation step absent. `runApp` remains inside
+the guarded zone. The route registry is evaluated before app-owned graph
+resources are created. Page composition occurs after graph construction and
+before ownership handoff. Subordinate builders are tested directly; production
+does not expose a generic Page-catalog replacement seam. Tests own and dispose
+an injected boundary.
 
 ## Top-level boundaries
 
@@ -434,6 +447,9 @@ forbidding database access from presentation.
 | Catalog repository port, store adapter, and application facade | `packages/bounded_contexts/catalog` | Keep business language and mapping in the owning context |
 | `AppEventBus` instance with real publishers/subscribers | Graph-owned leaf | Concrete lifecycle stays in composition; consumers receive non-owning publisher/subscriber roles |
 | Graph resource ownership | `buildAppDependencyGraph<T>` and `AppDependencyGraphOwner` | Private ledger during construction and one-shot root ownership after handoff |
+| Typed application log vocabulary and local projection | `app/diagnostics/logging` | Outer-app observability SPI without exposing a generic logger to packages or features |
+| Raw unexpected-error reporting and root handlers | `app/diagnostics/error_reporting` | Keep raw error/stack authority separate from approved log records |
+| Future persistent support log | Root-isolate `AppLoggingModule` under Diagnostics | Starts before Environment, outlives the app graph, and degrades independently of functional dependencies |
 | BLoC factory | `feature/<name>/di` | Presentation construction policy |
 | `Factory<T>` closure | `feature/<name>/di` | Creates a new feature-owned instance without runtime parameters; the invoking lifecycle owner owns the result |
 | `ParamFactory<T, P>` closure | `feature/<name>/di` | Creates a new feature-owned instance from a typed route/runtime parameter; the invoking lifecycle owner owns the result |
@@ -608,8 +624,11 @@ registrar records only the returned module and exposes only its application
 facade. The reference Database→Catalog→Ordering composition remains
 explicit. It may be split into private typed subordinate functions only after
 size or reuse provides evidence; `lib/app/di/modules` is reserved for concrete
-resource-owning technical/platform composition, not arbitrary wiring groups.
-No universal `Module` interface is introduced. Do not register process-global
+graph-owned technical/platform composition, not arbitrary wiring groups. A
+process-root resource stays with its owning capability: the future persistent
+support-log adapter belongs under Diagnostics and is not registered merely to
+fit every lifetime into the app graph. No universal `Module` interface is
+introduced. Do not register process-global
 Firebase registries, externally supplied test fakes, or private resources
 already owned by a module. If an async module factory allocates internal
 resources and throws before returning an owner, it must attempt all internal
@@ -926,16 +945,21 @@ assemblies, package configurations, or vendor SDK types.
 
 Fatal steps propagate to the startup boundary when the functional graph cannot
 operate without them: Flutter binding, a required database engine, or required
-Firebase initialization.
+Firebase initialization. Binding creation is a configuration-free prelude
+inside the guarded root zone. Environment-dependent framework and SDK choices
+still execute only after configuration validation.
 
-Environment parsing occurs before any optional remote provider exists and its
-failures remain local-only. Startup never forwards rejected configuration or
-its raw representation to a remote reporter.
+Environment parsing occurs before any optional remote provider exists. In the
+future Persistent Support Log phase it occurs after a bounded app-local storage
+attempt, but that store accepts only already approved support-safe projections;
+it is neither a reporter nor a remote provider. Startup never forwards rejected
+configuration, its raw representation, or an Environment-derived storage name
+to logging or reporting.
 
-Best-effort steps catch and safely report their own failure when functionality
-remains available: optional analytics, debug observers, or optional crash
-reporting. A remote reporter must have a bounded timeout and must not install
-duplicate global handlers.
+Best-effort steps catch and safely contain their own failure when functionality
+remains available. Optional analytics or remote crash reporting appears only
+after its capability decision; a remote reporter must have bounded completion
+and must not install duplicate global handlers.
 
 The base scaffold contains no vendor SDK and no artificial initializer list.
 The composition root invokes the top-level `initializeAppFramework` function
@@ -948,63 +972,529 @@ startup coordinator classes are not part of the target.
 
 ## Diagnostics and error-handler lifecycle
 
-Application diagnostics belongs under `lib/app/diagnostics`. Root handlers,
-application support codes, logger policy, reporter policy, and the BLoC
-observer are application concerns rather than domain-neutral `core` utilities.
-
-The channels remain separate:
+Application diagnostics belongs under `lib/app/diagnostics`. It has two sibling
+subcapabilities, not two architectural layers and not one universal sink:
 
 ```text
-AppLogger
-→ sanitized synchronous breadcrumbs
+Operational logging
+  AppLogger → synchronous typed breadcrumbs
 
-AppErrorReporter
-→ error, original stack, and a safe diagnostic context
+Error reporting
+  AppErrorReporter → asynchronous raw error + nullable original stack
 
-AppErrorBoundary
-→ root Zone and Flutter/platform handler ownership
+Coordination
+  AppErrorBoundary → root Zone and Flutter/platform handler ownership
 ```
 
-`AppLogger` accepts stable event names, approved runtime types, and optional
-durations only. It never receives an error, stack, arbitrary message,
-configuration, credentials, BLoC payload, analytics properties, or metadata
-map. The base implementations are a `dart:developer` logger, a no-op logger,
-and test-owned recording collaborators. `AppBlocObserver` receives the logger
-through its constructor and emits type-only breadcrumbs.
+The code is split between `logging` and `error_reporting`, uses point imports,
+and has no dump barrel or separate package. `app_logger.dart` contains the
+stable `AppLogger` port and the trivial lifecycle-free `NoopAppLogger` null
+object. The substantial local projection and `DeveloperAppLogger`
+implementation live in the separate `developer_app_logger.dart` point-import
+library. Callers constructing that implementation import it explicitly; the
+port library does not re-export it. The two subcapabilities remain one app-owned
+Diagnostics capability because the boundary coordinates both channels, they
+share root-isolate privacy governance, the boundary attempts a safe breadcrumb
+before every accepted raw report, and a reporter failure becomes a fixed safe
+record. Neither channel acquires the authority of the other.
 
-`AppErrorReporter` is an explicit behavior interface with local, no-op, and
-test recording implementations. The local development implementation may use
-runtime types and a guarded stack without invoking the error's `toString`;
-release output contains only stable non-sensitive support context. A remote
-adapter is capability-gated by provider, consent, scrubbing, timeout, flush,
-and recursion policies.
+### Operational log-record SPI
 
-Original stacks remain available to the owning error boundary but are not UI
-text or ordinary logger fields: they may contain local paths, URIs, and runtime
-details. A future remote reporter must scrub them according to its reviewed
-policy before transport.
+`AppLogger.log` accepts one immutable `AppLogRecord`. The base record is an open
+`abstract base class`, and each production record is a final application-owned
+subclass that represents exactly one semantic breadcrumb. This class-per-record
+model avoids a growing central factory or subtype switch while retaining typed
+closed field shapes. Related records are grouped by cohesive app concern; one
+class does not imply one source file.
 
-`AppErrorBoundary` owns uncaught root-zone, Flutter framework, platform, and
-unhandled BLoC failures. `AppBlocObserver` emits a type-only debug breadcrumb
-and never calls the application reporter, so one BLoC failure produces one
-reporter event. Code that deliberately catches an expected failure owns its
-local handling and reporting decision.
+The SPI is open only inside trusted reviewed outer-application code. It is not
+a privacy sandbox, plug-in API, domain contract, analytics vocabulary, or
+permission for arbitrary features and packages to depend on a global logger.
+Domain, inner application layers, and bounded-context packages never import it.
+A capability with a real logging need owns a narrower semantic port, and an
+app-side adapter translates that call to a concrete app-owned record. The first
+real adapter is placed under
+`lib/app/diagnostics/logging/adapters/<capability>_logging_adapter.dart`; the
+directory and any adapter base do not exist before that consumer. The adapter
+may import only the inward semantic port, `AppLogger`, and its concrete records,
+and receives no raw failure, arbitrary string, identifier, entity, DTO, or
+metadata map. Records do not import features, entities, facades, repositories,
+DI, provider SDKs, or bounded-context models. The adapter is stateless,
+non-owning, and is not added to `AppDependencies` without a real app-lifetime
+consumer. Its exact inward import is admitted by an atomic guard update rather
+than a blanket Diagnostics exception.
 
-The first boundary `run` captures previous Flutter/platform handlers, installs
-wrappers, and starts one guarded root zone. A second `run`, or `run` after
-disposal, is rejected. Disposal is idempotent and restores a previous handler
-only when the current global handler is still the wrapper installed by that
-boundary. Previous handlers are chained once; their own failures are reported
-as secondary `APP-HANDLER-001` diagnostics. The platform wrapper returns `true`
-because the application boundary handled the error.
+Each record exposes one static descriptor containing an explicit event name,
+positive event-schema version, fixed semantic severity, and fixed data class.
+It synchronously projects fields through `AppLogFieldWriter` and returns only
+`AppLogProjectionResult.complete`. A production record does not perform I/O,
+schedule a Future, Timer, microtask, `.then` callback, or detached work; call a
+logger, reporter, Zone, global handler, or store; stringify a payload; or accept
+event identity, severity, data class, arbitrary messages, errors, stacks, maps,
+lists, configuration, credentials, or caller-defined metadata.
 
-`AppErrorReporter` receives a `SafeDiagnosticContext`. Graph rollback sends a
-DI-owned aggregate only to a non-reporting collector so startup can preserve
-primary-first outward reporting. Normal root-lifecycle disposal may send its
-aggregate to the owner's reporting callback because no construction primary is
-pending. Reporter failure is reduced to `APP-REPORT-001` without recursively
-calling the failed reporter. Vendor automatic global handlers must not be
-enabled alongside this application-owned boundary.
+`AppLogFieldWriter` is an `abstract interface class`, not `abstract final`:
+production records and test writers live in separate point-import libraries.
+Implementing the writer grants no access to a production logger or store;
+production `project` calls and collector implementations remain restricted to
+the private projection engine and architecture guards.
+
+The typed writer permits:
+
+- `debugType` for debug-only runtime `Type` breadcrumbs;
+- `supportFlag` for a boolean;
+- `supportCount` for a non-negative JSON-safe integer;
+- `supportDuration` for a non-negative JSON-safe microsecond duration;
+- `supportCode` for a reviewed low-cardinality `AppLogStableCode`.
+
+Support fields never contain arbitrary strings, entity/account/device/session/
+tenant identifiers, URLs, paths, queries, objects, collections, DTOs, errors,
+stacks, runtime types, or credentials. Syntax validation of a stable code does
+not prove that it is free of personal data; production record definitions are
+trusted reviewed code.
+Absence is represented by an omitted field or a different record type, not a
+nullable metadata bag.
+
+Validation requires a lower-case dotted ASCII event name of at most 96
+characters, a positive 31-bit version, a unique `(eventName, eventVersion)`
+pair, lower-snake-case field names of at most 48 characters, at most 32 fields,
+no duplicate field name, and an uppercase tokenized stable code of at most 64
+characters. Invalid projection rejects the entire record atomically.
+
+Diagnostics Core validates this synchronous schema and its typed bounds. The
+4-KiB limit belongs to the future Persistent Support Log phase because it is
+defined over the complete canonical persisted UTF-8 line, including its
+storage envelope and final LF. Core neither has that envelope nor claims to
+enforce its encoded size early.
+
+### Privacy profiles and local projection
+
+Build privacy is physically clamped as `kDebugMode && testOverride`: a test
+seam may disable debug detail but cannot enable it in profile or release.
+`kReleaseMode` is not used to select diagnostic detail.
+
+- A `debugOnly` record is discarded before `project` outside debug and never
+  enters developer output or future support history.
+- A `supportSafe` record projects approved support fields in every mode. Any
+  additional debug `Type` fields are rendered only in debug and are neither
+  stored nor retained outside it.
+- `supportSafe` means eligible for bounded local support history under this
+  policy. It does not mean anonymous, remotely cleared, consented,
+  audit-grade, or suitable for analytics.
+
+The built-in logger reads and validates the descriptor, invokes `project`
+exactly once, creates one immutable defensive projection, rejects it atomically
+on any failure, and tombstones its temporary writer in `finally`. A retained
+writer silently ignores later calls and does not retain a logger, store,
+callback, mutable buffer, or debug `Type`. The logger contains synchronous
+descriptor, projection, validation, formatting, and sink failures. It cannot
+contain failures that occur before `log`, a hostile infinite loop or detached
+task, OOM, or VM/native fatal termination.
+
+`AppLogger.log` remains a synchronous `void` port. Implementations do not mark
+it `async`, reenter themselves, invoke `AppErrorBoundary` or
+`AppErrorReporter`, or install global handlers. Validation, projection, and a
+synchronous sink or enqueue handoff complete before return, and no failure
+escapes the caller. A future persistent module may start only a module-owned,
+tracked, fully contained drain after enqueue; detached work remains forbidden.
+This reviewed implementation contract and its source/AST guards are preferred
+to a result sentinel, which would break callers without preventing arbitrary
+scheduling.
+
+`DeveloperAppLogger` writes through `dart:developer.log` without raw `error` or
+`stackTrace` arguments and maps `info`, `warning`, and `error` to levels 800,
+900, and 1000. It never calls `record.toString()`. `NoopAppLogger` returns
+without reading the descriptor or projecting the record. Recording loggers and
+field writers are test-only. The private collector, normalized projection,
+validation, formatting, and developer sink remain in the same Dart library as
+`DeveloperAppLogger`: extracting them now would require `part` files or public
+internal types without a second production consumer. When persistent logging
+is accepted, the engine is reviewed and extracted atomically only as needed so
+developer output and support recording can consume one normalized projection
+created by one `project` call. It never becomes a public formatter, sink,
+visitor, or serializer registry.
+
+Diagnostics Core contains exactly this record vocabulary:
+
+| Record class | Event | Version | Data class | Severity | Fields |
+|---|---|---:|---|---|---|
+| `AppBlocCreatedLogRecord` | `app.bloc.created` | 1 | debugOnly | info | `component_type` |
+| `AppBlocEventLogRecord` | `app.bloc.event` | 1 | debugOnly | info | `component_type`, `event_type` |
+| `AppBlocStateChangedLogRecord` | `app.bloc.state_changed` | 1 | debugOnly | info | `component_type`, `previous_state_type`, `next_state_type` |
+| `AppBlocActionLogRecord` | `app.bloc.action` | 1 | debugOnly | info | `component_type`, `action_type` |
+| `AppBlocErrorBreadcrumbLogRecord` | `app.bloc.error_breadcrumb` | 1 | debugOnly | warning | `component_type`, `error_type` |
+| `AppBlocClosedLogRecord` | `app.bloc.closed` | 1 | debugOnly | info | `component_type` |
+| `AppErrorReportedLogRecord` | `app.diagnostics.error_reported` | 1 | supportSafe | error | `report_code` |
+| `AppErrorReporterFailureLogRecord` | `app.diagnostics.reporter_failed` | 1 | supportSafe | error | `support_code = APP-REPORT-001` |
+
+The Startup phase later adds `AppStartupStartedLogRecord`
+(`app.startup.started`, no fields) and `AppStartupCompletedLogRecord`
+(`app.startup.completed`, non-negative `duration`). Both begin at event version
+1. They are not part of
+Diagnostics Core and are not added merely to anticipate a caller. A negative
+duration is rejected by the later record constructor with a static privacy-safe
+message.
+
+Event-schema, persisted-entry, exported-NDJSON, and backend-layout versions are
+independent namespaces. An event version changes when a persisted field's
+name, type, meaning, requiredness, support classification, severity semantics,
+or descriptor meaning changes. An old `(name, version)` pair and a removed name
+never acquire a new meaning. A debug rendering change need not version a record
+that is never persisted.
+
+### Error reports and report kinds
+
+`AppErrorReportKind` is a closed taxonomy of root and orchestration ingress,
+not a list of feature failures. It is neither severity, expectedness, retry
+policy, analytics dimension, remote-provider eligibility, nor an
+`AppLogRecord`. Feature-specific expected failures do not extend it.
+
+| Kind | Wire value | Support code | Label |
+|---|---|---|---|
+| Root Zone | `root_zone` | `APP-ROOT-001` | `Root zone` |
+| Environment | `environment` | `APP-ENVIRONMENT-001` | `Environment` |
+| Startup | `startup` | `APP-STARTUP-001` | `Startup` |
+| Flutter framework | `flutter_framework` | `APP-FRAMEWORK-001` | `Flutter framework` |
+| Platform dispatcher | `platform_dispatcher` | `APP-PLATFORM-001` | `Platform dispatcher` |
+| DI rollback | `dependency_rollback` | `APP-DI-ROLLBACK-001` | `Dependency rollback` |
+| DI disposal | `dependency_disposal` | `APP-DI-DISPOSE-001` | `Dependency disposal` |
+
+`AppErrorReporter.report` returns strict `Future<void>` for all work it starts
+and accepts the raw error, its nullable original stack, and one
+`AppErrorReportKind`. Calls may proceed independently and concurrently. The API
+does not promise ordering, serialization, acknowledgement, retry, queueing,
+deduplication, cancellation, or flush, and accepted implementations create no
+floating work or global handlers.
+
+`LocalAppErrorReporter` receives its formatter by constructor, formats and
+invokes its developer sink synchronously, then returns a completed Future. A
+synchronous sink failure becomes a failed Future with the original sink stack.
+It never passes raw `error` or `stackTrace` arguments to
+`dart:developer.log`. `NoopAppErrorReporter` and test-owned recording reporters
+complete the accepted Core implementations.
+
+The formatter enables detail only under `kDebugMode`. Profile and release
+return only the exact static code and English label, without reading
+`error.runtimeType` or invoking `error.toString()` or
+`stackTrace.toString()`. Debug may add `error.runtimeType` and a guarded
+rendering of a supplied stack, but not the error's string representation. A raw
+debug stack can contain paths and URIs and is sensitive local detail, not
+sanitized or remote-ready data. An absent stack remains absent; no
+`StackTrace.current` is fabricated. Retired support codes are never reused with
+a different meaning.
+
+### Root error boundary
+
+`AppErrorBoundary` borrows its logger and reporter and never closes them. It
+owns one guarded Dart application Zone plus `FlutterError.onError` and
+`PlatformDispatcher.onError` for the root Flutter application isolate. It does
+not claim child-isolate, OOM, VM/native-fatal, arbitrary browser-JavaScript,
+pre-boundary, or already caught failure coverage. On Flutter 3.47 Web the
+platform callback is not a complete browser error channel, so the guarded root
+Zone remains mandatory ([Flutter issue 100277](https://github.com/flutter/flutter/issues/100277)).
+
+The public `run` is `void`: it claims one isolate-local active-owner lease,
+installs handlers inside `runZonedGuarded<void>`, and invokes the asynchronous
+body with `unawaited`. The body's Future never crosses the error-zone boundary.
+Binding initialization and `runApp` later execute inside that body. Startup
+sets `BindingBase.debugZoneErrorsAreFatal = true` before creating the binding in
+debug.
+
+Boundary lifecycle is private and monotonic: `created → active → disposed` or
+`created → disposed`. A competing boundary changes no handlers and remains
+usable after the winner is disposed. Repeated `run` and `run` after disposal
+fail with static messages. Installation failure performs identity-safe
+rollback, releases the lease, and leaves that instance terminal.
+
+Direct explicit `report` is independent of the handler lease. It is permitted
+while the boundary is `created` or `active`, does not install handlers, and
+does not change lifecycle state; automatic error coverage still begins only in
+`run`. After disposal, deliberately starting new reports is a caller violation,
+but an unavoidable late callback remains best-effort/no-throw and carries no
+delivery, availability, ordering, or flush guarantee.
+
+Previous Flutter and platform callbacks are captured only for identity-safe
+restoration. They are never invoked and never receive an original or surrogate
+failure. Disposal restores only a callback still identical to this boundary's
+wrapper and does not overwrite a later foreign handler. Platform restoration
+runs in the caller Zone captured by `run`, because the setter captures
+`Zone.current`; an arbitrary Zone in which a third-party handler was installed
+cannot be reconstructed. Vendor automatic global handlers must not compete
+with the application boundary.
+
+Production retains the boundary for the application-isolate lifetime. Tests
+dispose it only after quiescence. Disposal is idempotent but does not cancel the
+root Zone, await in-flight reports, flush a provider, or stop callbacks retained
+by older tasks.
+
+The platform wrapper always returns `true` so an embedder fallback cannot print
+the raw failure. This means application policy accepted the error, not that a
+report was delivered. A Flutter detail's supplied nullable stack is forwarded
+unchanged. Silent Flutter details are reported by default only in debug; any
+future remote provider must review that policy explicitly. Application code
+does not call `FlutterError.presentError`, `exceptionAsString`, `print`, or
+`debugPrint`.
+
+For each normal `report` call the boundary:
+
+1. checks its private per-boundary logger invocation marker and silently
+   suppresses logger-induced reentry;
+2. checks its distinct reporter invocation marker and reduces reporter-induced
+   reentry to at most one reporter-failure record;
+3. best-effort logs one `AppErrorReportedLogRecord` containing only the kind's
+   support code;
+4. invokes the raw reporter;
+5. reduces synchronous or asynchronous reporter failure to at most one
+   `AppErrorReporterFailureLogRecord`.
+
+Both keys are private per-boundary objects, so unrelated boundaries and normal
+concurrent reports remain independent. Boundary-owned record construction and
+`logger.log` execute inside a guarded child Zone carrying the logger marker;
+synchronous and inherited-async logger failures are suppressed without calling
+the reporter or manufacturing `APP-REPORT-001`. This defense does not permit an
+`async void` logger. The reporter marker retains the existing direct and
+inherited-async A→B→A containment. Logger failure never blocks the raw reporter,
+and reporter or logger failure never replaces the primary failure. Neither
+marker claims to contain detached reporter work or unrelated engine callbacks.
+Global ingress uses `unawaited(report(...))` only because `report` contains all
+of its own failures. Independent ingress has no ordering guarantee. Explicit
+Startup/DI orchestration may await the primary report and then the captured
+rollback aggregate to preserve primary-first order.
+
+`AppBlocObserver` receives `AppLogger` through its constructor and emits the
+six debug-only record types from `onCreate`, `onEvent`, `onChange`, `onAction`,
+`onError`, and `onClose`. It does not log `onTransition`, because `onChange`
+already covers both Bloc and Cubit without duplicate state records. Records are
+constructed only in debug; the logger independently drops them before
+projection outside debug. Payloads are never stringified, the observer never
+invokes the reporter, and a hostile logger cannot prevent the required super
+callback.
+
+Exactly-once is deliberately narrow: one non-suppressed boundary ingress calls
+the reporter at most once. There is no identity deduplication across Zone,
+Flutter, and platform channels. One uncaught reference Bloc handler failure
+creates one observer breadcrumb and one root report. Manual `addError` may
+create only a breadcrumb, while a Cubit failure may reach root without one.
+
+Expectedness belongs to each operation contract, not to Dart's `Exception`
+marker. Presentation catches only exact documented application failures.
+Unknown exceptions, `Error`, data-integrity failures, and invariant failures
+remain unexpected. An adapter translates only a recognized provider condition
+to its owner-specific failure while preserving the original stack. Propagating
+the same object uses `rethrow`; handled expected failures are not reported
+automatically.
+
+### Future persistent support log
+
+Persistent support history is a later Storage phase, not part of Diagnostics
+Core. It adds `AppLoggingModule` under
+`app/diagnostics/logging/support_log`, with separate borrowed `AppLogger` and
+least-authority `AppSupportLogExporter` roles. Its constructor performs static
+validation and memory allocation only. It captures an exclusive same-isolate
+logging lease before observable effects, but exposes no static current-module
+getter, registry, lookup, or lifecycle authority through its roles.
+
+Its public shape is deliberately small:
+
+```dart
+enum AppLogPersistenceMode { persistent, memoryOnly }
+
+abstract interface class AppSupportLogExporter {
+  Future<AppSupportLogSnapshot> exportSnapshot();
+}
+
+final class AppLoggingModule {
+  AppLogger get logger;
+  AppSupportLogExporter get supportLogExporter;
+  Future<AppLogPersistenceMode> activatePersistence();
+  Future<void> dispose();
+}
+```
+
+`AppSupportLogSnapshot` contains only `ndjson`, `mediaType`, and
+`suggestedFileName`. Logger and exporter role objects may retain the private
+engine but expose no activation, disposal, or lookup authority.
+
+The composition root owns the module outside `AppDependencyGraph`. Logging must
+remain available for Environment failure, graph-construction rollback, graph
+disposal failure, and final controlled teardown; graph ownership would close it
+too early. This is a narrow lifetime exception, not permission for arbitrary
+root resources. The lifecycle-bearing module never enters `AppDependencies`;
+the exporter role enters only with a real Support UI consumer. Widgets do not
+close the module, and production normally has no awaited process shutdown.
+
+The module begins as a bounded memory recorder. `activatePersistence()` and
+`dispose()` publish their memoized Future before any provider callback and set
+their request state synchronously. Activation never exposes a raw failed Future
+and resolves only to `persistent` or `memoryOnly`; it is not a Startup readiness
+gate. Dispose wins once requested, prevents new activation and export, drops
+later logs, contains provider failures, and completes after cleanup or bounded
+abandonment rather than promising durable flush. An open that completes after
+disposal closes its handle and cannot attach. All late provider completions are
+generation/state guarded and cannot resurrect public state.
+
+Its internal lifecycle is:
+
+```text
+buffering → activating → persistent
+                       → memoryOnly
+persistent → memoryOnly
+
+buffering/activating/persistent/memoryOnly
+  → disposalRequested → disposed
+```
+
+`activatePersistence()` is non-`async` at entry. Its first valid call publishes
+one Future before invoking a provider; repeated valid callers receive that
+identical Future. A first call after disposal request fails synchronously with a
+static message. Disposal before activation wins. Activation before disposal may
+finish only as `memoryOnly` if the request prevents attachment; any late opened
+handle is closed. `dispose()` is likewise non-`async` at entry, publishes one
+identical Future for repeated callers, makes later logging a silent drop, and
+makes new activation or export fail synchronously with static messages.
+Public state becomes `disposed` before the shared disposal Future completes. A
+clean quiescent disposal releases the lease; a still-running timed-out provider
+operation keeps it poisoned until that operation can no longer race a new
+module.
+
+Provider open, write, prune, flush, and close operations default to two-second
+bounds; one export has a five-second whole-operation budget. `Future.timeout`
+does not cancel underlying work. A controlled disposal gives an already
+accepted export up to five seconds and cleanup up to two more, for a seven-
+second hard public bound. If a timed-out provider operation is still alive, the
+same-isolate lease remains poisoned until safe completion rather than allowing
+a second writer over the namespace. Controlled shutdown therefore requires:
+
+```text
+quiesce application work
+→ await graph disposal and every explicit report
+→ establish boundary/report/export quiescence
+→ dispose the boundary
+→ await logging-module disposal
+```
+
+The Startup phase first introduces the transitional seam of one logger, one
+reporter, and a narrow boundary factory. The Storage phase atomically replaces
+the logger seam with one optional `AppLoggingModule`; the boundary factory must
+receive the exact module logger and selected reporter, and no independent
+logger may create split-brain composition. The final order is module
+construction, fixed local reporter and boundary construction, boundary run,
+debug zone-mismatch policy, binding creation, unawaited owned non-failing
+persistence activation, Environment loading, Environment-dependent SDK work,
+graph and UI composition, then `runApp`. The fixed storage namespace is
+app-owned and never derived from rejected Environment values.
+
+Each accepted support-safe record is synchronously normalized to immutable
+fields, UTC time, a private random 128-bit writer-instance ID, and monotonic
+sequence before an async boundary. The ID is for store idempotency only; it is
+not a user/device/session identifier and is never exported. Failure to create
+it safely keeps persistence in memory-only mode. Recent history holds 256
+entries. Total uncommitted work, including an in-flight immutable batch, is at
+most 256; a batch is at most 32. Overflow drops the oldest non-in-flight entry.
+Counters do not consume queue slots, and one serialized tracked drain Future
+replaces periodic timers, blind retries, sampling, or deduplication. Unknown
+commit outcome is not blindly retried; the store uses `(writerInstanceId,
+sequence)` as an idempotent logical key.
+
+The initial reviewed logical bounds are 4 KiB per complete canonical persisted
+line, 2 MiB and seven days retained encoded data, 2 MiB per exported snapshot,
+256 KiB per native segment, and eight native segments total including active.
+The byte bounds measure UTF-8 encoded entries, not filesystem or IndexedDB
+overhead; the byte cap is hard while age pruning is opportunistic under clock
+skew. The initial phase keeps these reviewed constants in source rather than
+adding a runtime configuration hierarchy.
+
+Native persistence is segmented append-only NDJSON in the application cache
+or no-backup location. It uses streaming bounded reads, closes before rename,
+prunes before append/rotation, skips corrupt full lines and an incomplete crash
+tail, repairs only exact owned filenames, and never deletes unknown files.
+`flush` is best effort and does not claim physical `fsync` durability. Web
+persistence uses exact-pinned `idb_shim` and IndexedDB, not `localStorage`;
+append plus oldest pruning shares one read-write transaction whose completion
+is awaited. Browser eviction, private mode, quota, blocked open, and
+`versionchange` degrade or close safely. No root module coordinates native
+multi-process writers, child isolates, Web tabs, or a shared-origin multi-app
+namespace.
+
+Open, write, prune, or unusable-connection failure terminates persistence for
+that run and degrades to memory. One corrupt stored entry or export-only read
+failure does not automatically disable a healthy writer. Store failure never
+enters the boundary or reporter, is never stringified or retried, and creates
+at most one fixed `app.diagnostics.support_log_unavailable` /
+`APP-SUPPORT-LOG-001` health entry plus an exact out-of-band counter. Invalid
+application records similarly produce at most one private
+`app.diagnostics.log_record_rejected` / `APP-LOG-001` health entry; overflow is
+a counter, not a recursive record. Failure handling first marks persistence
+terminal, detaches the target, clears pending work and updates loss counters,
+then adds the fixed memory health entry and attempts fixed developer output.
+These engine entries are not public record classes and never re-enter
+`AppLogger`.
+
+Export captures its writer watermark and retained ring references
+synchronously, then within five seconds drains toward that watermark, reads a
+transactional store snapshot, structurally validates and re-encodes entries,
+merges and deduplicates by the private logical key, excludes current-writer
+entries above the watermark, and selects the newest events that fit 2 MiB. The
+final NDJSON is chronological and contains a canonical header, event records,
+UTF-8 LF separators, and a final LF. The header reports format, creation time,
+mode/degradation, record and loss/corruption/omission counters. It is
+recalculated after trimming; the private writer ID is not exported. Concurrent
+calls have distinct watermarks and Futures but execute serially.
+
+The snapshot has media type `application/x-ndjson`, suggested filename
+`app-support-log.ndjson`, and a hard two-MiB UTF-8 limit including the header and
+final LF. Its header contains only snapshot-format version, UTC creation time,
+persistence mode/degraded status, final record count, persistence-drop count,
+rejected-record count, corrupt-record count, and omitted-for-size count. Each
+record line contains entry-format version, event name and schema version,
+severity token, UTC event time, snapshot-local ordinal, and typed support
+fields. Canonical key ordering is golden-tested; store commit order and current-
+run sequence, not timestamp, determine order.
+
+An exporter creates an in-memory snapshot only. It does not save, share,
+upload, purge, or enter `AppDependencies` before a real support workflow. Since
+there is no central historical schema registry, restart validation is
+structural and cannot promise semantic re-scrubbing. The snapshot is
+operational and potentially personal data, not an audit log or
+cryptographically protected record, and leaves the app only through an
+explicit user support workflow. Public purge, account correlators, automatic
+upload, encryption, compression, sampling, remote providers, support UI,
+child-isolate forwarding, multi-process/tab coordination, and controlled
+production shutdown each remain separate gates recorded in the roadmap.
+Before introducing an account/device/entity correlator, logout/erasure policy,
+or automatic upload, the application must accept a separately owned public
+purge capability and its policy; bounded retention is not a substitute.
+
+The selected shape deliberately rejects several superficially simpler
+alternatives. A central sealed record union would make every new app breadcrumb
+edit one subtype catalog; an open marker plus sink pattern matching would lose
+unknown fields or require every sink to change. A universal `DiagnosticSink`
+would merge synchronous support-safe records with asynchronous raw sensitive
+failures. A generic `AppErrorPolicy`, middleware pipeline, appender registry,
+or metadata bag would create policy and extension machinery before a provider
+exists. The support history does not use the business database, where it would
+be unavailable during database failure, or a second Drift database, whose
+schema/codegen/Web cost is disproportionate to bounded append-only history.
+Graph ownership and graph-to-root relays are rejected because they close or
+detach the recorder before final graph diagnostics. These decisions are
+revisited only when their named capability gates produce a concrete driver.
+
+The accepted boundary remains backed by one fixed local or no-op reporter for
+its whole lifetime. A remote provider requires an ADR covering post-Environment
+activation, eligibility, consent, governance, scrubbing, timeout, recursion,
+retry and delivery, flush, shutdown, ownership, and reporter handoff without a
+second global handler. No mutable registry or delegating placeholder is created
+in advance. Analytics remains a different capability with its own typed
+vocabulary, classified properties, consent, governance, cardinality limits,
+provider serialization, constructor injection, and provider-owned lifecycle.
+An analytics event is not an `AppEvent`, `AppLogRecord`, domain event, or
+integration event.
+
+A privacy-safe localized `ErrorWidget` policy waits for Presentation/Startup.
+Child-isolate roots and error-port forwarding wait for the first isolate
+workload; browser-level JavaScript capture waits for a Web diagnostics
+provider; controlled awaited shutdown waits for a real desktop or restart use
+case. None is scaffolded by Diagnostics Core.
 
 ## Feature DI lifetime
 
@@ -1325,25 +1815,36 @@ remain graph-owned.
 ## Observability extension
 
 The base template is provider-neutral. Before adding Sentry, Crashlytics, or a
-similar SDK, explicitly decide who owns global Flutter handlers, platform
-handlers, the root zone, and Web asynchronous errors. Manual and automatic
-integrations must not capture the same failure twice.
+similar SDK, retain `AppErrorBoundary` as the only global Flutter/platform/Zone
+owner and explicitly decide reporter activation, consent, scrubbing, bounded
+completion, recursion, Web coverage, flush, and SDK ownership. Vendor automatic
+global integration remains disabled so two channels do not capture the same
+failure.
 
 ## Testing
 
-Unit and widget tests cover environment parsing, safe diagnostics, root handler
-chaining, exactly-once BLoC reporting, aggregate build rollback, cleanup
-ordering, graph ownership transfer, failed pre-handoff Page composition, graph
-owner disposal callbacks, feature DI, checked decoder composition, typed Page
-coverage, route round-trips, no-replay/live event delivery, action consumption,
-and router teardown.
+Unit and widget tests cover environment parsing, safe diagnostics, root-handler
+ownership and restoration, scoped BLoC breadcrumbs/reporting, aggregate build
+rollback, cleanup ordering, graph ownership transfer, failed pre-handoff Page
+composition, graph owner disposal callbacks, feature DI, checked decoder
+composition, typed Page coverage, route round-trips, no-replay/live event
+delivery, action consumption, and router teardown.
 
 Device-dependent integration scenarios run in separate processes:
 
 1. real `main` plus `env/test.env` reaches the normal production graph;
-2. `runApplication` plus a recording boundary exposes hidden async failures;
+2. `runApplication` plus a recording reporter exposes hidden async failures and
+   asserts the complete expected record set;
 3. real `main` plus invalid configuration renders only the privacy-safe startup
    fallback.
+
+Every scenario that installs `AppErrorBoundary` uses a test-owned recording
+reporter, asserts its complete record set, and restores the boundary in a
+`finally` block after graph/report quiescence. An `addTearDown` callback remains
+a fallback but is not sufficient on its own: Flutter's test binding must regain
+its `FlutterError.onError` handler before a failing test-body Future escapes,
+otherwise the boundary hides the original assertion behind the binding's
+handler-override assertion.
 
 They are intentionally excluded from `make check`. A real external-system flow
 becomes mandatory when the project adds its first real external adapter.
