@@ -278,8 +278,8 @@ require a Flutter device.
 - Create a concrete disposable `AppEventBus` only with real consumers and give
   downstream code non-owning publisher/subscriber roles.
 - BLoCs and their factories stay in `feature/<name>`.
-- Shared `Factory` typedefs describe construction only; they are not
-  dependencies, owners, or permission to expose BLoC factories from
+- The shared `Factory` typedef describes construction only; it is not a
+  dependency, owner, or permission to expose BLoC factories from
   `AppDependencies`.
 - A `*_bloc.dart` file is the root library; its action, event, and state are
   mandatory `part` files and are imported only through the BLoC root.
@@ -305,7 +305,7 @@ require a Flutter device.
   explicit retry path. Expected failure of one UI command is an ephemeral
   action; data-integrity and unexpected failures propagate to the root boundary.
 - Never use `AppEventBus` for navigation, SnackBars, current state, or required workflows.
-- Demo and Activity must not import one another. They may depend on centralized
+- Features must not import one another. They may depend on centralized
   best-effort `AppEvent` contracts in `app/events` and narrow navigation
   contracts owned by `app/routing`. The Activity example is a non-authoritative
   screen-lifetime projection and must not be copied for business decisions.
@@ -317,12 +317,16 @@ require a Flutter device.
   feature-owned `routing/page_composition/<name>_route_page.dart` adapter imports the route,
   view, and DI boundary. Other routing files remain presentation-free. This is
   feature cohesion, not cross-feature coupling.
-- Only explicit application composition points import concrete features:
-  `app_navigator.dart`, `app_route_registry.dart`, `app_pages.dart`, and the
-  pre-DI `startup_failure_app.dart` wrapper. Root `App` consumes initial-route
-  and Page-building strategies without importing a feature directly.
+- Only exact application composition points import concrete features:
+  `app_route_registry.dart`, `app_route_url_codec.dart`, `app_pages.dart`,
+  `app_navigator_context.dart`, and the future pre-DI
+  `startup_failure_app.dart` wrapper. `AppNavigator` stays feature-neutral;
+  root `App` consumes route and Page strategies without importing a feature.
 - Stable route names belong to feature-owned `*RouteName` enums; route
   implementations and decoder maps must use the enum's `value`.
+- Treat `not-found` as an internal recovery route name, not an externally
+  decodable wire value. History-excluded recovery is never advertised as a
+  deep link or round-trip route.
 - Feature decoder maps receive `AppRouteFallbackBuilder`; they report a safe
   failure reason and never import the concrete NotFound feature.
 - NotFound is a normal-graph route-recovery feature. StartupFailure is an
@@ -336,9 +340,23 @@ require a Flutter device.
   Bloc and Cubit and does not duplicate them through `onTransition`.
 - Page builders are synchronous and non-owning. They use `route.pageKey`,
   dispatch by exact route type, and never start I/O or allocate disposable
-  resources.
+  resources. The root `App` captures one Page-building strategy for its State
+  lifetime; replacement requires a new `App` identity rather than hot-swapping
+  the existing Router delegate.
 - Decoder composition rejects duplicate route values before router construction;
   Page catalog construction rejects duplicate route types.
+- Keep `rolter` exact-pinned and review upgrades as compatibility migrations.
+  Its framework path setters accept synchronously; application code may await
+  only the shared `RoutesState.processingCompleted` drain and must not treat it
+  as request-scoped acknowledgement, cancellation, or latest-wins behavior.
+- Treat route names, parameters, URIs, page keys, and `NavTransition` as
+  potentially sensitive. Never stringify them into Diagnostics or analytics.
+  The app URL safety decorator bounds external logical input, validates the
+  complete decoded tree, and collapses ambiguous duplicate URL parameters,
+  unsafe fallback mixtures, or duplicate Page keys to one privacy-safe
+  NotFound reason. Only malformed parameter decoding is contained in the
+  preflight; delegate and programming failures propagate. Browser origin,
+  hosting rewrites, and platform links remain Startup/deployment contracts.
 - Do not replace the app graph for login/logout or tenant changes. Add a
   separately owned session graph only with a real capability and explicit
   quiescence policy.

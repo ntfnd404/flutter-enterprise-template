@@ -6,6 +6,7 @@ import 'package:ordering/ordering.dart';
 import 'package:template/app/di/app_dependencies_factory.dart';
 import 'package:template/app/di/app_dependency_graph.dart';
 import 'package:template/app/environment/storage/app_storage_configuration.dart';
+import 'package:template/core/event_bus/app_event.dart';
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
@@ -118,5 +119,20 @@ void main() {
         .watchOrder(orderId)
         .first;
     expect(cancelled.status, OrderStatus.cancelled);
+
+    final publisher = graph.dependencies.eventPublisher;
+    final subscriber = graph.dependencies.eventSubscriber;
+    expect(identical(publisher, subscriber), isTrue);
+    final received = subscriber.on<_ProbeAppEvent>().first;
+    publisher.emit(const _ProbeAppEvent());
+    await received;
+
+    await graph.dispose();
+    expect(() => publisher.emit(const _ProbeAppEvent()), throwsStateError);
+    expect(subscriber.on<_ProbeAppEvent>, throwsStateError);
   });
+}
+
+final class _ProbeAppEvent extends AppEvent {
+  const _ProbeAppEvent();
 }

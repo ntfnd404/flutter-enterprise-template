@@ -83,8 +83,9 @@ repositories, Product Offers, the Catalog ACL, clock, and database module remain
 composition-only.
 
 Catalog and Ordering facades intentionally have no Flutter consumer through the
-Diagnostics and UI kit prerequisite phases. This bounded gap expires in the
-Routing/presentation phase; if that phase is cancelled or materially delayed,
+Diagnostics prerequisite phase. The Catalog gap expires in Enterprise Routing
+and reference presentation; the Ordering gap remains bounded until Order
+Composer. If either consumer phase is cancelled or materially delayed,
 the unused outputs are removed. The accepted `main.dart` remains the simple
 scaffold entrypoint until the Startup phase, so this DI factory is tested
 production composition but is not yet live runtime wiring.
@@ -124,7 +125,7 @@ provider contract is maintained in
 not repeated here.
 
 The accepted `main.dart` does not yet construct Diagnostics. This bounded
-runtime-consumer gap expires in Startup, after UI kit and presentation APIs are
+runtime-consumer gap expires in Startup after stable routing and Page APIs are
 accepted. Startup record classes are not part of Core and arrive only with
 their real Startup consumer. If Startup is cancelled or materially redesigned,
 the unused boundary and observer extension points are re-reviewed rather than
@@ -156,61 +157,70 @@ Remote diagnostics and analytics remain separate capability gates. No provider
 registry, transport, queue, interceptor pipeline, or analytics event hierarchy
 is accepted by this revision.
 
-## Next review: Enterprise UI kit
+## Next review: Enterprise Routing and reference presentation
 
-**Entry criterion:** diagnostics is accepted. The package itself does not
-depend on diagnostics.
+This branch preserves the reviewed Rolter-based routing alternative as a
+read-only reference. It is not the canonical `main` routing target and does not
+receive automatic backports from `main`.
 
-Accept `packages/libraries/ui_kit` as an autonomous reusable Flutter library
-before application presentation depends on it. It owns Material 3 theme
-assembly, light/dark/system variants, semantic ThemeExtension tokens,
-component themes, focus behavior, target sizes, text scaling, and reduced
-motion policy. It contains no product-specific widgets in v1.
+**Entry criterion:** DI and Diagnostics APIs are stable; Rolter 0.2.1 is
+published and exact-pinned. UI kit and localization are not prerequisites.
 
-The root application adds the direct package dependency only with the later
-app-shell/presentation consumer snapshot.
+Accept the typed routing capability with the executable
+`Demo + Activity + Catalog + NotFound` slice:
 
-**Acceptance:** package analysis, tests and DartDoc are green; WCAG 2.2 AA,
-48dp targets, 200%/320% layout behavior, focus, light/dark/system, and
-reduced-motion contracts are reviewed.
+- feature-owned immutable routes, stable route-name enums, strict decoders,
+  feature Page composition, and exact app registry/Page catalogs;
+- app-owned external logical-URL safety decorator with hard input bounds,
+  whole-tree validation, query compatibility, and privacy-safe recovery;
+- bare `AppNavigator` plus narrow Activity/Catalog navigation roles and private
+  adapters instead of a God navigator or broad context getter;
+- UI-owned Router lifecycle, system back, typed route restoration, and Rolter
+  0.2.1 shared-drain/lifecycle consumer contracts;
+- first real `AppEventBus` publisher/subscriber consumers and deterministic
+  graph/BLoC teardown;
+- ordinary Material defaults, with no UI-kit or generated-localization claim.
 
-## Routing, presentation, Order Composer, and localization
+Catalog proves route/Page/DI/facade composition and its current reference
+watch/retry/draft/delete behavior. This phase does not claim a complete Catalog
+product workflow, final UX, browser hosting, platform deep links, guards,
+nested stacks, results, or Order Composer.
 
-**Entry criterion:** DI, diagnostics, and UI kit APIs are stable.
+The accepted `main.dart` remains the simple scaffold until Startup. This phase
+accepts the real `App` widget and tests it directly; live browser address-bar
+and platform-link behavior wait for Startup/deployment integration.
 
-Accept one coherent Flutter presentation phase:
+**Acceptance:** exact Rolter pin, logical URL goldens and bounds, fallback
+privacy, duplicate rejection, exact route/Page coverage, narrow navigation,
+system back/restoration, Rolter late-work containment, facade-only Page wiring,
+EventBus role ownership, and awaited graph teardown are green in an isolated
+reviewed snapshot.
 
-- standardize every feature Page adapter under
-  `routing/page_composition/<feature>_route_page.dart`;
-- keep routes and decoders data-only;
-- make Scopes factory-only and let `BlocProvider(create: ...)` own BLoCs;
-- complete Catalog category, draft, publication, offer-update, archival,
-  deletion, observation, and retry UI;
-- add an app-level Order Composer using both `CatalogFacade` and
-  `OrderingFacade` without coupling the contexts;
-- add English generated localization and remove hard-coded product vocabulary;
-- install the accepted UI kit in normal and startup-failure shells.
+## Later autonomous presentation phases
 
-Order Composer provides `/orders` and `/orders/:orderId`, persistent draft
-creation, published-product selection, quantities, whole-line replacement,
-placement, cancellation, authoritative watches, and operation-specific
-failures. It uses Catalog only for product discovery; Ordering repeats the
-authoritative Product Offers query through its ACL before committing.
+The enterprise UI kit remains an autonomous reusable-library phase. It owns
+Material theme/tokens/accessibility policy and may replace the current
+placeholder presentation without changing route data or navigation contracts.
+Generated localization is another presentation capability: stable route names
+and parameter keys are never localized.
 
-**Acceptance:** route and Page coverage, duplicate rejection, fallback privacy,
-Scope/BLoC ownership, facade-only presentation, Value Object UI constraints,
-Catalog and Order Composer behavior, stream retry ownership, generated
-localization, accessibility, and widget tests are green.
+Order Composer is accepted only with its real Ordering consumer. It uses
+`CatalogFacade` for published-product discovery and `OrderingFacade` for Order
+behavior without coupling the bounded contexts. Full Catalog UX, Order
+Composer, localization, and UI-kit adoption may be reviewed independently or
+as a later coherent presentation snapshot when their real consumer contracts
+are ready.
 
 ## Startup composition
 
-**Entry criterion:** DI, diagnostics, routing, localization, and Page
-composition have stable APIs.
+**Entry criterion:** DI, diagnostics, routing, and Page composition have stable
+APIs. UI kit and localization are not Startup prerequisites.
 
 Keep `void main() => runApplication();` and make top-level `runApplication` the
 only composition root. Replace static `AppBootstrap` with the subordinate
-top-level `initializeAppFramework` function. Remove the production
-`pageCatalogBuilder` seam.
+top-level `initializeAppFramework` function. Reuse the accepted route codec and
+`buildAppPages` composition directly; do not reintroduce a production
+Page-catalog injection seam.
 
 The startup transaction is:
 
@@ -222,9 +232,10 @@ construct one logger, one fixed local/no-op reporter, and one narrow boundary fa
 → start Stopwatch and log AppStartupStartedLogRecord
 → load AppStartupConfiguration
 → initialize Environment-dependent framework/SDK capabilities
-→ build and validate route registry
+→ build and validate route registry/codec
 → build dependency graph
-→ build and validate Page catalog
+→ build Page catalog and reject duplicate route definitions
+→ rely on CI consumer contracts for exact decoder/Page coverage
 → log AppStartupCompletedLogRecord
 → runApp
 → hand the graph to one root lifecycle owner

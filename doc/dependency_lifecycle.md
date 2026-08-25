@@ -126,6 +126,13 @@ ports with accepted consumers, except for a bounded, tested consumer gap
 recorded in the roadmap. A disposable capability such as `AppEventBus` stays
 graph-owned and exposes only the non-owning roles required downstream.
 
+The reference composition registers `AppEventBus` first and immediately. It
+then lends only `AppEventPublisher` and `AppEventSubscriber` through
+`AppDependencies`. LIFO disposal therefore closes feature/database dependents
+before the bus. A feature subscription starts cancellation when its Page/BLoC
+subtree is removed; tests unmount the tree and await the graph's same memoized
+`dispose()` Future rather than inferring quiescence from one pump or delay.
+
 ## Failure-atomic assemblies
 
 An async factory can allocate resources and fail before returning an owner.

@@ -452,13 +452,13 @@ forbidding database access from presentation.
 | Future persistent support log | Root-isolate `AppLoggingModule` under Diagnostics | Starts before Environment, outlives the app graph, and degrades independently of functional dependencies |
 | BLoC factory | `feature/<name>/di` | Presentation construction policy |
 | `Factory<T>` closure | `feature/<name>/di` | Creates a new feature-owned instance without runtime parameters; the invoking lifecycle owner owns the result |
-| `ParamFactory<T, P>` closure | `feature/<name>/di` | Creates a new feature-owned instance from a typed route/runtime parameter; the invoking lifecycle owner owns the result |
 | BLoC instance | `BlocProvider(create: ...)` | Widget/flow lifecycle |
 | Router delegate or UI controller | `App` or a flow shell | UI lifecycle, not graph lifecycle |
 | Typed feature route, decoder, and Page definition | Owning feature under `routing` and `routing/page_composition` | Cohesive feature navigation and presentation contribution |
 | Application-wide best-effort AppEvent notification | `app/events` | App-owned catalog prevents feature cycles without misclassifying the notification as a DDD integration event |
-| Navigation capability shared by otherwise independent features | `app/routing` | Application UI owns semantic navigation and adapts it to routes |
+| Navigation capability shared by otherwise independent features | Port under `app/routing`; private mapping in `app_navigator_context.dart` | Application UI owns semantic navigation while `AppNavigator` stays feature-neutral |
 | Route registry and initial-stack policy | `app/routing/app_route_registry.dart` | Data/policy composition point that aggregates feature decoders |
+| External logical-route safety policy | `app/routing/app_route_url_codec.dart` | Bounds input and validates the complete decoded tree without replacing Rolter grammar |
 | Page catalog and narrow dependency mapping | `app/routing/app_pages.dart` | UI composition point that aggregates feature Page definitions |
 | Invalid route classification | `AppRouteFailureReason` | Privacy-safe app routing SPI without URI/query payload |
 | NotFound BLoC, DI, route, and screen | `feature/not_found` | Normal-graph route-recovery scenario |
@@ -1538,14 +1538,14 @@ may skip it entirely. A BLoC starts subscription cancellation before its first
 asynchronous gap. Required persistence and business completion remain awaited
 inside the repository or use-case operation and never move into `close()`.
 
-`Factory<T>` and `ParamFactory<T, P>` are shared function-type vocabulary, not
-app-level dependencies. A factory defines how feature composition creates an
-object; the caller owns the returned instance. `Factory<T>` fits construction
-without runtime input. `ParamFactory<T, P>` fits a route ID or argument while
-the closure captures infrastructure dependencies. Use a record or immutable
-parameter object when several values are needed rather than adding numbered
-factory typedefs. BLoC factories remain in feature DI and `BlocProvider(create:
-...)` owns the instances they return.
+`Factory<T>` is shared function-type vocabulary, not an app-level dependency.
+It defines how feature composition creates an object without runtime input;
+the caller owns the returned instance. When a real route/runtime parameter is
+needed, keep the typed closure feature-local and introduce a dedicated
+immutable parameters object only when several values form a meaningful
+contract. Do not predeclare generic parameterized factory typedefs without a
+consumer. BLoC factories remain in feature DI and `BlocProvider(create: ...)`
+owns the instances they return.
 
 ### Catalog and Order Composer presentation
 
@@ -1686,9 +1686,10 @@ business inconsistency, `AppEventBus` is the wrong mechanism.
 
 Navigation is a separate channel. `ActivityNavigation` lives in
 `app/routing` because it is an application-UI capability, not a
-low-level core concern. `AppNavigator` adapts that narrow contract to the
-concrete Activity route. Demo and Activity can therefore share semantics
-without importing one another or sending navigation through the EventBus.
+low-level core concern. A private adapter in `app_navigator_context.dart` maps
+that narrow contract to the bare `AppNavigator` and concrete Activity route.
+Demo and Activity can therefore share semantics without importing one another
+or sending navigation through the EventBus.
 
 Neither action stream nor event bus has replay or durable delivery. When a
 consumer needs the current value or cannot miss an update, use an owned
@@ -1703,87 +1704,142 @@ It never stringifies payloads or `EphemeralBlocChange`.
 
 ## Typed routing
 
-The package dependency is pinned to `rolter: 0.2.0`. `App` creates and disposes
-the route state and delegate; routing objects do not enter `AppDependencies`.
-`App` receives one synchronous, non-owning `RouteNodePageBuilder<AppRoute>`
-Strategy from application composition.
+The dependency is exact-pinned to `rolter: 0.2.1`; every upgrade is a reviewed
+compatibility migration. Rolter's `RoutingDelegate.setNewRoutePath`, initial
+path, and restored path accept framework requests synchronously.
+`RoutesState.processingCompleted` observes the shared active FIFO drain: it may
+cover several requests accepted before idle, but is not a per-request
+acknowledgement, cancellation handle, watermark, or latest-wins contract.
+Request-scoped completion becomes a package-upgrade gate only with a real
+consumer; the app never copies Rolter's queue or state.
 
-Feature routes are data-only `RouteNode` values. Each feature owns its route,
-`*RouteName` enum, strict decoder contribution, typed Page definition, feature
-DI, and view. A route enum's `value` is the single source for both the
-route name and decoder key. Every Page uses `route.pageKey`, and the page
-catalog dispatches by exact route runtime type rather than route value.
+`App` owns `RoutesState<AppRoute>`, `AppNavigator`, `RoutingDelegate`, and the
+route-information parser for one root widget lifetime. It disposes the delegate
+before the state. These UI resources never enter `AppDependencies`, a feature,
+or the graph. `App` resolves the lazy registry/codec and constructs the parser
+before allocating state or delegate, so authored registry failure leaves no
+partial routing resources. It also captures one Page-building strategy for the
+State lifetime; a different strategy requires a new `App` identity and a fresh
+Router lifecycle. Startup later eagerly resolves the registry/codec before
+graph construction, then builds the dependency-aware Page catalog after the
+graph. Catalog construction validates duplicate route types; exact
+decoder-to-Page coverage remains a CI consumer contract rather than a runtime
+reflection registry. The routing snapshot intentionally does not make the
+accepted placeholder `main.dart` live.
 
-Every Flutter Page adapter uses the single predictable path
-`feature/<name>/routing/page_composition/<name>_route_page.dart`. Other routing
-files remain presentation-free. The adapter may import its route, Scope, and
-screen; it must not import the BLoC library, start I/O, navigate, or own a
-resource.
+`AppRoute` is an open app-owned SPI implemented only by final immutable feature
+routes. A route is data-only, includes every identity-bearing field in its
+`pageKey`, uses a feature-owned `*RouteName.value`, and does not build UI, start
+I/O, own resources, or receive BLoCs, facades, or repositories. Current stable
+external wire values are `demo`, `activity`, and `catalog`; parameter keys are
+stable lowercase values. `not-found` is a stable internal recovery route name,
+not a registered or advertised deep-link value. A released external wire value
+never receives a new meaning. Rename uses a temporary decoder alias while the
+encoder emits only the new canonical value.
 
-`app_route_page_definition.dart` owns the Page-contribution SPI and its typed
-adapter. `app_route_page_catalog.dart` owns only indexing, duplicate rejection,
-and runtime dispatch. The interface and typed adapter stay together as one
-contract; the application catalog changes for a different reason.
+Each feature owns a strict decoder contribution. The decoder validates exact
+parameters and children, translates expected malformed input to a safe
+`AppRouteFailureReason`, receives `AppRouteFallbackBuilder`, and never imports
+NotFound or catches programming failures generically. The Rolter
+`Map<String, String>` is confined to this codec boundary; it is not generic
+application metadata. Decoder composition rejects duplicate values with a
+static privacy-safe error.
 
-Application routing deliberately has two composition responsibilities:
+`TreeUrlCodec` remains the route-tree wire grammar. `AppRouteUrlCodec` decorates
+it with application input safety rather than inventing a conventional router:
 
-- `app_route_registry.dart` validates and merges decoder maps, selects
-  fallback, and owns initial-stack/normalization policy;
-- `app_pages.dart` maps the dependency catalog to narrow feature Page
-  contributions.
+- serialized logical URI length is at most 4096 characters;
+- at most 32 non-empty raw path segments are accepted;
+- malformed percent-encoding or a duplicate parameter key within one standard
+  query or one inline route segment fails closed before delegate decode;
+- the same key may belong to different route segments, while an inline value
+  retains its documented precedence over the separate standard-query channel;
+- a standard entry query is normalized to canonical inline parameters when a
+  required route parameter could not otherwise survive the initial Rolter
+  decode; existing inline parameters retain precedence;
+- the delegate is called at most once and programming failures propagate;
+- the complete decoded tree is traversed recursively;
+- duplicate Page keys, multiple fallbacks, or a fallback mixed with another
+  node collapse to one `NotFoundRoute(invalidRouteTree)`;
+- one standalone sanitized NotFound preserves its original safe reason;
+- valid decoded roots are returned as an immutable list;
+- encoding delegates unchanged to `TreeUrlCodec`.
 
-These catalogs change for different reasons and are not merged into a module
-registry or `AppRoutingConfiguration`. Checked decoder composition rejects a
-duplicate route value before app-owned resource construction; the composition
-root explicitly evaluates the otherwise-lazy registry before building the
-graph.
+External/restored decode recovery and internal programmatic validation are
+separate. The safety decorator converts only decoded unsafe input; an invalid
+programmatically constructed tree remains a programming error in Rolter.
+Stack normalization is also separate: a direct `/activity~sequence=3` decodes
+to Activity and then becomes `[Demo, Activity]` by `normalizeAppStack`.
 
-`AppRoutePageCatalog` rejects duplicate route types during construction. A
-missing Page definition fails safely when the route is first rendered;
-contract tests enumerate every supported route type instead of adding
-descriptors or code generation.
+Codec goldens use logical URIs such as `/demo/activity~sequence=7`. A hash Web
+deployment displays `https://host/#/demo/activity~sequence=7`; a separately
+accepted path deployment displays `https://host/demo/activity~sequence=7` and
+requires hosting rewrites and direct-refresh tests. Local, dev, test, and prod
+scaffold profiles default to hash. Routing tests prove logical parser/Router
+behavior, not a live browser address-bar, hosting, origin, Android App Links,
+or iOS Universal Links contract. Those enter with Startup/deployment data.
 
-`AppNavigator` implements narrow contracts such as `ActivityNavigation` and
-maps them to concrete feature routes without exposing those route classes to
-callers. Invalid external values are reported through an injected
-`AppRouteFallbackBuilder` as a safe `AppRouteFailureReason`. Feature decoders
-therefore do not import NotFound. Application registry fallback maps that
-reason to `NotFoundRoute`; the feature's Page contribution renders it. The
-route is excluded from history and stores no attempted URI or query value in
-params, state, page keys, logs, or UI.
+Route URIs, query parameters, page keys, and `NavTransition` are potentially
+sensitive operational data. Credentials, secrets, and access tokens never
+belong in routes. Routing never automatically logs or stringifies these values,
+and NotFound retains only a safe enum reason. This does not erase an address
+from browser history, proxy logs, OS dispatch, referrers, or clipboards; the
+codec is not a sanitizer for external systems. Identifier-bearing deep links
+require a derived-application privacy review.
 
-Startup failure follows a separate path because the normal graph may not
-exist. `StartupFailureApp` is a thin `MaterialApp` wrapper around
-`StartupFailureScope → BlocProvider → StartupFailureScreen`. It accepts only a
-safe diagnostic code and never provides raw errors, stack traces, environment
-values, normal graph services, or a generic retry of framework initialization.
+Every Page adapter lives at
+`feature/<name>/routing/page_composition/<name>_route_page.dart`. It may import
+only its route, Scope, screen, and required narrow application roles; it does
+not import the BLoC root, start I/O, navigate, or own resources. It uses
+`route.pageKey` and forwards the complete recursive Page builder to a future
+nested shell. `AppRoutePageCatalog` indexes exact route types immutably, rejects
+duplicates, and preserves Page-factory error identity and stack. There is no
+speculative `AppPageCatalogBuilder` seam.
 
-`NavigatorScope` stays above `MaterialApp.router` so routed pages can resolve
-the navigator facade. A Page definition may wrap its screen with feature DI. A
-flow scope belongs above only the routes that truly share one session BLoC; the
-base app does not install such a scope speculatively. Page builders may run
-repeatedly and must not start I/O, navigate, mutate route state, or create
-unowned disposable resources.
+Application routing has explicit source-owned governance points:
 
-The target reference routing phase starts with a flat two-route tree and the
-default `TreeUrlCodec`.
-Nested navigation, guards, and public-URL custom codecs remain supported
-extension points but are not instantiated without a real requirement.
+- `app_route_registry.dart` aggregates decoder contributions and initial-stack
+  policy;
+- `app_route_url_codec.dart` recognizes the app recovery route;
+- `app_pages.dart` aggregates Page contributions and narrows dependencies;
+- `app_navigator_context.dart` privately adapts cross-feature navigation roles;
+- the future pre-DI `startup_failure_app.dart` is the only separate fallback
+  composition point.
 
-Navigation APIs have two intentionally different ownership models:
+`AppNavigator` is a bare `NavigationController<AppRoute>` and imports no
+feature. Widgets resolve only narrow roles such as `ActivityNavigation` and
+`CatalogNavigation`; the app-private stateless adapters create concrete routes.
+There is no broad `context.navigator`, navigation registry, generic adapter
+base, service locator, or navigation over `AppEventBus`. Non-widget
+coordinators may receive the same narrow role by constructor only when a real
+scenario exists. A feature normally emits UI intent and lets its view navigate.
 
-- `DemoNavigation` is feature-owned. Its `toDemo()` operation performs a full
-  stack reset and may be used by Demo or application composition that
-  intentionally depends on Demo. Unrelated features must not import it.
-- `ActivityNavigation` is application-owned. It is a narrow cross-feature
-  capability that lets a caller open Activity without importing Activity's
-  route or implementation.
+`DemoNavigation` remains the tested feature-owned self-navigation extension:
+`toDemo()` is a complete stack reset, not a pop alias. Unrelated features never
+import it. This extension point creates no production dependency and remains
+only while its scenario, DartDoc, and tests stay useful.
 
-The absence of a production caller does not by itself make a documented
-template extension point dead code. The scaffold may retain one when it
-represents a chosen pattern, has a concrete future scenario and test, creates
-no runtime initialization or artificial dependency, and does not require every
-feature to copy the abstraction.
+`NavigatorScope` stays above `MaterialApp.router`. System back is tested through
+the framework dispatcher and keeps Navigator Pages, Rolter state, and
+route-owned subscription cancellation synchronized. Route restoration is
+accepted only for typed route configuration: Activity identity survives
+`restartAndRestore` and returns to Demo on system back. BLoC state, pending
+results, watches, controllers, and domain transactions are not restored.
+History-excluded NotFound recovery does not promise restoration of NotFound
+itself. `/not-found` is therefore handled like any other unknown external route;
+manual codec encoding of a NotFound node is not a supported deep-link contract.
+
+Demo, Activity, Catalog, and NotFound are the executable reference slice.
+Catalog proves facade-to-Page-to-BLoC composition but is not a claim that its
+full product UX, localization, or design system is complete. Routing uses
+ordinary Material defaults and has no UI-kit dependency. Its reference draft
+controls still adapt to narrow window constraints so the executable example
+does not require a design system merely to remain usable. Guards, nested
+stacks, result routes, history, observers, analytics, custom public grammar,
+and platform deep links remain consumer-gated. The first guard must define its
+owner, redirect/failure contract, refresh-listener identity and teardown, and
+whether the shared 0.2.1 drain is sufficient; it is never a server-side
+authorization boundary.
 
 ## Session, application lifecycle, and isolates
 

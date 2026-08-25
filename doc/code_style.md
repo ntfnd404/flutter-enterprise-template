@@ -134,6 +134,9 @@ part 'profile_state.dart';
   import the same feature's route, scope, and view.
 - Keep concrete cross-feature route imports in application composition files,
   not in root widgets, core, or unrelated feature slices.
+- Keep `AppNavigator` feature-neutral. Adapt a real cross-feature destination
+  through a narrow app-owned port and a private stateless adapter in
+  `app_navigator_context.dart`; do not expose a broad `BuildContext.navigator`.
 - Make every externally composed Page use `key: route.pageKey`. Page builders
   are synchronous and non-owning: do not start I/O, navigate, mutate route
   state, or allocate an unowned disposable resource in them.
@@ -144,6 +147,22 @@ part 'profile_state.dart';
   only `AppRouteFailureReason` and must not import the concrete recovery route.
 - Never pass attempted URI, query values, or raw decoder failures into fallback
   routes, BLoC state, page keys, presentation, or logs.
+- Treat route URI, params, page keys, and navigation transitions as potentially
+  sensitive. Do not interpolate or stringify them in errors, Diagnostics, or
+  analytics. Stable wire names and parameter keys are explicit reviewed
+  literals, not localized copy.
+- Keep logical codec goldens separate from browser-visible hash/path examples.
+  Browser hosting, origin validation, and platform deep links are integration
+  contracts rather than codec unit-test claims.
+- Count and inspect external route segments in their raw encoded form. Reject
+  duplicate parameter keys within one query channel or route segment before
+  decoding; do not wrap trusted decoder or route code in a generic catch.
+- Treat recovery-only route names separately from external wire values. A
+  `HistoryExcluded` NotFound route is application state, not a public deep-link
+  destination.
+- Capture one Page-building strategy for a root `App` State lifetime. Replace
+  the strategy by recreating `App` with a new identity, not by silently
+  retaining stale Page/DI composition or hot-swapping the Router delegate.
 
 ## Analyzer policy
 

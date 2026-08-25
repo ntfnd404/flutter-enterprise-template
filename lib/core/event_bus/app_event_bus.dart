@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:template/core/event_bus/app_event.dart';
+import 'package:template/core/event_bus/app_event_publisher.dart';
+import 'package:template/core/event_bus/app_event_subscriber.dart';
 
 /// In-process broadcast bus for typed cross-feature application facts.
 ///
@@ -11,12 +13,16 @@ import 'package:template/core/event_bus/app_event.dart';
 /// Listener failures remain asynchronous and are delivered to the Zone that
 /// owns the failing subscription; they are not returned to the producer.
 ///
-/// The application graph owns and disposes the bus. Consumers own their stream
-/// subscriptions and must cancel them before graph teardown. After disposal
-/// starts, both [on] and [emit] throw a [StateError].
+/// The application graph owns and disposes the concrete bus. Downstream
+/// consumers receive [AppEventPublisher] or [AppEventSubscriber], so they
+/// cannot close the borrowed bus. Consumers own their stream subscriptions and
+/// must cancel them before graph teardown. After disposal starts, both [on]
+/// and [emit] throw a [StateError].
 ///
 /// This bus is not a transport for navigation, UI effects, current state,
-/// transaction coordination, or work that must complete reliably.
+/// transaction coordination, or work that must complete reliably. In
+/// particular, it must not coordinate bounded-context consistency or publish
+/// durable DDD integration events.
 ///
 /// Events are published and observed as follows:
 ///
@@ -32,7 +38,7 @@ import 'package:template/core/event_bus/app_event.dart';
 /// await subscription.cancel();
 /// await eventBus.dispose();
 /// ```
-final class AppEventBus {
+final class AppEventBus implements AppEventPublisher, AppEventSubscriber {
   /// Creates an active event bus.
   AppEventBus();
 
@@ -42,6 +48,7 @@ final class AppEventBus {
   ///
   /// Past events are not replayed. Requesting a new event stream after disposal
   /// starts throws [StateError].
+  @override
   Stream<T> on<T extends AppEvent>() {
     if (_controller.isClosed) {
       throw StateError(
@@ -56,6 +63,7 @@ final class AppEventBus {
   ///
   /// Delivery is ordered per subscription. Publishing after disposal starts
   /// throws [StateError].
+  @override
   void emit(AppEvent event) => _controller.add(event);
 
   /// Closes the bus and returns its shared completion future.
