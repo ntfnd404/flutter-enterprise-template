@@ -118,32 +118,25 @@ part 'profile_event.dart';
 part 'profile_state.dart';
 ```
 
-## Routing names
+## Future navigation and URL names
 
-- Put stable URL and decoder keys in a feature-owned `*RouteName` enum with a
-  `value` field.
-- Make the route's `name` and its decoder-map key reference the same enum
-  value. Do not duplicate route-name string literals or add `static wireName`
-  fields to page implementations.
-- Keep page identity (`pageKey`) separate from the route-value contract: a page key
-  may include runtime parameters and widget-lifecycle identity.
-- Keep each concrete data-only route beside its feature view and DI boundaries.
-  The route imports the shared `app/routing/app_route.dart` SPI but no feature
-  UI or DI. Put the outer presentation adapter in
-  `feature/<name>/routing/page_composition/<name>_route_page.dart`; only that file may
-  import the same feature's route, scope, and view.
-- Keep concrete cross-feature route imports in application composition files,
-  not in root widgets, core, or unrelated feature slices.
-- Make every externally composed Page use `key: route.pageKey`. Page builders
-  are synchronous and non-owning: do not start I/O, navigate, mutate route
-  state, or allocate an unowned disposable resource in them.
-- Dispatch Pages by exact route type, never by a route value. Application decoder
-  composition must reject duplicate route values instead of relying on map
-  spread overwrite behavior.
-- Inject `AppRouteFallbackBuilder` into feature decoder maps. A feature reports
-  only `AppRouteFailureReason` and must not import the concrete recovery route.
-- Never pass attempted URI, query values, or raw decoder failures into fallback
-  routes, BLoC state, page keys, presentation, or logs.
+- Select and pin a routing implementation only with the first real
+  multi-screen consumer. Keep package-specific APIs at the outer application
+  UI boundary, never in bounded contexts, inner application code, or BLoCs.
+- Treat published paths and parameter names as compatibility contracts. Keep
+  their values stable, non-localized, and owned by the feature or application
+  policy that defines their meaning.
+- Treat every external location as untrusted input. Bound parsing work, reject
+  ambiguous or malformed input, and convert expected failures to a
+  privacy-safe application fallback without catching programming failures.
+- Treat URLs, parameters, and navigation state as potentially sensitive. Never
+  interpolate them into logs, analytics, exception messages, or fallback UI.
+- Keep router delegates and controllers in the root UI lifecycle rather than
+  the dependency graph. UI composition callbacks remain synchronous,
+  non-owning, and free of I/O or resource allocation.
+- Add path-based Web URLs or native deep links only with matching hosting,
+  platform configuration, and integration tests. A parser unit test alone does
+  not prove deployment behavior.
 
 ## Analyzer policy
 

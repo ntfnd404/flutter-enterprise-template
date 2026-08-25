@@ -43,7 +43,6 @@ staging, runtime use, or dependency expansion out of order.
 - `lib/core/event_bus`: domain-neutral best-effort event delivery mechanism.
 - `lib/app/events`: application-wide best-effort `AppEvent` contracts for
   independent Flutter features.
-- `lib/app/routing`: route composition, navigation capabilities, and UI-owned router lifecycle.
 - `lib/app/view`: root framework/application wrappers, not a general screen catalog.
 - `lib/feature/<name>`: Flutter presentation and feature-local UI orchestration;
   `app` is never modeled as a feature.
@@ -275,8 +274,9 @@ require a Flutter device.
 - Keep composition explicit and constructor-based. Add private typed helpers or
   cohesive module factories only for demonstrated ownership or partial-rollback
   responsibilities; never add a universal module protocol or DI container.
-- Create a concrete disposable `AppEventBus` only with real consumers and give
-  downstream code non-owning publisher/subscriber roles.
+- Instantiate and register the accepted concrete `AppEventBus` only with real
+  publisher and subscriber consumers; downstream code receives non-owning
+  roles.
 - BLoCs and their factories stay in `feature/<name>`.
 - Shared `Factory` typedefs describe construction only; they are not
   dependencies, owners, or permission to expose BLoC factories from
@@ -305,40 +305,24 @@ require a Flutter device.
   explicit retry path. Expected failure of one UI command is an ephemeral
   action; data-integrity and unexpected failures propagate to the root boundary.
 - Never use `AppEventBus` for navigation, SnackBars, current state, or required workflows.
-- Demo and Activity must not import one another. They may depend on centralized
-  best-effort `AppEvent` contracts in `app/events` and narrow navigation
-  contracts owned by `app/routing`. The Activity example is a non-authoritative
-  screen-lifetime projection and must not be copied for business decisions.
-- Route classes and decoders belong to their feature. Application routing may
-  map narrow app-owned navigation contracts to concrete feature routes.
-- A feature-owned navigation extension may be retained as a documented and
-  tested scaffold extension point, but unrelated features must not import it.
-- A feature route is data-only and implements the app-owned `AppRoute` SPI. Its
-  feature-owned `routing/page_composition/<name>_route_page.dart` adapter imports the route,
-  view, and DI boundary. Other routing files remain presentation-free. This is
-  feature cohesion, not cross-feature coupling.
-- Only explicit application composition points import concrete features:
-  `app_navigator.dart`, `app_route_registry.dart`, `app_pages.dart`, and the
-  pre-DI `startup_failure_app.dart` wrapper. Root `App` consumes initial-route
-  and Page-building strategies without importing a feature directly.
-- Stable route names belong to feature-owned `*RouteName` enums; route
-  implementations and decoder maps must use the enum's `value`.
-- Feature decoder maps receive `AppRouteFallbackBuilder`; they report a safe
-  failure reason and never import the concrete NotFound feature.
-- NotFound is a normal-graph route-recovery feature. StartupFailure is an
-  isolated pre-DI feature that must not import normal DI, routing, or EventBus.
-- `App` and `StartupFailureApp` are application wrappers; user-facing screen
-  content and its state lifecycle belong in a feature.
+- No router is accepted in the current scaffold. Select and exact-pin one only
+  with the first real multi-screen consumer after Startup; do not add a router
+  factory or provider-neutral facade in advance.
+- A future router belongs to root UI lifecycle, not `AppDependencies` or the
+  dependency graph. Bounded contexts, inner layers, and BLoCs never import the
+  router package or use a global navigator/router locator.
+- Keep cross-feature navigation out of `AppEventBus`. Add a narrow semantic
+  application-UI port only when a real caller must navigate without depending
+  on another feature's implementation.
+- Treat URLs, parameters, and navigation state as potentially sensitive. Do
+  not stringify them in Diagnostics, analytics, exceptions, or fallback UI.
+- Accept path-based Web URLs and platform deep links only together with their
+  hosting/platform configuration and integration tests.
 - `AppEventBus` has no replay. A screen-lifetime consumer observes only events
   published while its screen exists.
 - `AppErrorBoundary` is the sole reporter of unhandled BLoC failures; the global
   BLoC observer emits debug-only type breadcrumbs through `onChange` for both
   Bloc and Cubit and does not duplicate them through `onTransition`.
-- Page builders are synchronous and non-owning. They use `route.pageKey`,
-  dispatch by exact route type, and never start I/O or allocate disposable
-  resources.
-- Decoder composition rejects duplicate route values before router construction;
-  Page catalog construction rejects duplicate route types.
 - Do not replace the app graph for login/logout or tenant changes. Add a
   separately owned session graph only with a real capability and explicit
   quiescence policy.

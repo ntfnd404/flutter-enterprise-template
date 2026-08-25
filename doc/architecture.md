@@ -42,53 +42,48 @@ of truth.
 | Component | Responsibility |
 |---|---|
 | `main` | One-line delegate to the testable application entrypoint |
-| `runApplication` | Root diagnostics, binding prelude, Environment loading, graph composition, ownership handoff, startup fallback |
+| Future Startup composition root | Root diagnostics, binding prelude, Environment loading, graph composition, ownership handoff, startup fallback |
 | `AppErrorBoundary` | Root zone, Flutter/platform handlers, injected safe reporting |
 | `AppLoggingModule` | Future root-isolate support-log ownership outside the dependency graph |
-| `initializeAppFramework` | Environment-dependent process-global framework and required SDK preparation after the binding prelude |
+| Future framework initializer | Environment-dependent process-global framework and required SDK preparation after the binding prelude |
 | `buildAppDependencies` | Concrete app-level Database→Catalog→Ordering composition |
 | `buildAppDependencyGraph<T>` | Generic transactional construction over one private resource ledger |
 | `AppDependencies` | Immutable downstream port/facade catalog without lifecycle APIs |
 | `AppDependencyGraphOwner` | Flutter lifecycle adapter that claims one `AppDependencyGraph<Object>` once |
-| `App` | Routing and application UI lifecycle |
+| Future normal application widget | Root application UI lifecycle; exact API selected by the Startup phase |
 
 ## Startup sequence
 
 ```text
-main → runApplication
+composition root
   → AppErrorBoundary installs Flutter/platform handlers and guarded root zone
   → set debug zone-mismatch policy before binding initialization
   → initialize the Flutter binding inside the guarded root zone
   → future Persistent Support Log phase activates bounded local storage
   → load and validate AppStartupConfiguration
-  → initializeAppFramework(configuration.environment, logger)
-  → build and validate the route registry
+  → initialize Environment-dependent framework capabilities
   → buildAppDependencyGraph creates one private ownership boundary
   → buildAppDependencies receives only a register-only resource capability
   → the graph seals registration and exposes AppDependencies
-  → build app-owned Page catalog from narrow dependencies
-  → runApp hands the graph to its root lifecycle owner
-  → App owns Rolter lifecycle
-  → feature-owned Page composition
+  → runApp mounts one root lifecycle owner with the normal application child
 ```
 
 The boundary is installed before binding initialization, Environment parsing,
 or any future vendor reporter. In debug,
 `BindingBase.debugZoneErrorsAreFatal` is set before the binding exists; the
 binding is then initialized inside the guarded root zone. This configuration-
-free prelude is deliberately separate from `initializeAppFramework`, whose
-URL-strategy and required-SDK work may depend on the validated Environment.
+free prelude is deliberately separate from Environment-dependent framework
+initialization, whose URL-strategy and required-SDK work may depend on the
+validated Environment.
 
 The later Persistent Support Log phase inserts bounded best-effort local
 activation after binding and before Environment parsing. That order permits a
 support-safe Environment failure to reach app-local storage without reading or
 persisting the rejected configuration. Until that phase is accepted, Startup
 uses the same sequence with the activation step absent. `runApp` remains inside
-the guarded zone. The route registry is evaluated before app-owned graph
-resources are created. Page composition occurs after graph construction and
-before ownership handoff. Subordinate builders are tested directly; production
-does not expose a generic Page-catalog replacement seam. Tests own and dispose
-an injected boundary.
+the guarded zone. Production does not predeclare a router factory or a
+normal-application constructor. The Startup Source of Truth selects those
+public/test seams and tests own and dispose any injected boundary.
 
 ## Top-level boundaries
 
@@ -105,8 +100,7 @@ word does not refer to a Dart `library` declaration or a DDD Shared Kernel.
 
 - `app` owns application environment policy, process-global initialization,
   dependency-graph composition and ownership, root framework/application
-  wrappers, routing composition, and application-wide cross-feature
-  notification contracts;
+  wrappers, and application-wide cross-feature notification contracts;
 - `core` contains feature-neutral internal application infrastructure and must
   not import `app` or `feature`; it does not promise portability as an external
   reusable package;
@@ -130,16 +124,14 @@ extraction automatic. `common`, `utils`, and empty symmetry packages are not
 valid ownership models.
 
 `app` is deliberately not a feature: it has no user-facing use case or BLoC of
-its own. A feature's data-only route, decoder, route Page adapter, DI boundary,
-and view remain in the same feature slice. The route itself imports no UI or
-DI. The `routing/page_composition/<name>_route_page.dart` adapter is the only
-routing file that imports the feature's route, scope, and screen. Importing the
-app-owned routing SPIs is not a feature-to-feature dependency.
+its own. Future feature presentation keeps its DI boundary, BLoC, and view in
+the same vertical slice. Any future router-specific adapter remains an outer
+UI concern and cannot move router dependencies into a bounded context, inner
+application code, or BLoC.
 
-`app/view` is not a catalog of screens. `App` owns the normal router lifecycle,
-and `StartupFailureApp` owns the minimal pre-DI `MaterialApp`; both delegate
-their user-facing content and state to feature slices. NotFound is a
-normal-graph recovery feature. StartupFailure is an isolated pre-DI feature.
+`app/view` is not a catalog of screens. The Startup phase will define the root
+normal/fallback wrappers and ownership handoff without depending on a routing
+package. User-facing content and state remain in feature slices.
 
 ### Deliberate exclusions
 
@@ -214,10 +206,11 @@ one dependency surface. Within a context, `domain`, `application`,
 `infrastructure`, and `composition` exist only when active behavior requires
 them; empty layers are not scaffolded.
 
-Demo and Activity remain presentation examples rather than artificial business
-contexts. A context is split into several packages only after an ADR records a
-real independent team/release lifecycle, incompatible platform dependencies,
-or demonstrated reuse boundary.
+Presentation examples, including the accepted Demo notification contract and
+any future consumer feature, are not artificial business contexts. A context
+is split into several packages only after an ADR records a real independent
+team/release lifecycle, incompatible platform dependencies, or demonstrated
+reuse boundary.
 
 Presentation consumes a context's application facade, command, query, or use
 case API. Repository ports, concrete persistence, SDK clients, and
@@ -438,7 +431,7 @@ forbidding database access from presentation.
 
 | Value or action | Owner | Reason |
 |---|---|---|
-| Flutter binding, URL strategy, required global SDK initialization | `initializeAppFramework` | Process-global startup preparation; each concrete initializer owns its reentrancy and retry policy |
+| Flutter binding, URL strategy, required global SDK initialization | Future Startup-owned framework initialization | Process-global startup preparation; each concrete initializer owns its reentrancy and retry policy |
 | Firebase/SDK global registry handle used only by an adapter | Local variable in the owning module factory | Borrowed process-global value, not downstream API |
 | Simple HTTP/RPC client shared as app infrastructure | App module or direct leaf registration in `buildAppDependencies` | Explicit app ownership without exposing it to presentation |
 | Private client created inside a context module | The module | Avoid exposing internals and double disposal |
@@ -452,18 +445,11 @@ forbidding database access from presentation.
 | Future persistent support log | Root-isolate `AppLoggingModule` under Diagnostics | Starts before Environment, outlives the app graph, and degrades independently of functional dependencies |
 | BLoC factory | `feature/<name>/di` | Presentation construction policy |
 | `Factory<T>` closure | `feature/<name>/di` | Creates a new feature-owned instance without runtime parameters; the invoking lifecycle owner owns the result |
-| `ParamFactory<T, P>` closure | `feature/<name>/di` | Creates a new feature-owned instance from a typed route/runtime parameter; the invoking lifecycle owner owns the result |
 | BLoC instance | `BlocProvider(create: ...)` | Widget/flow lifecycle |
-| Router delegate or UI controller | `App` or a flow shell | UI lifecycle, not graph lifecycle |
-| Typed feature route, decoder, and Page definition | Owning feature under `routing` and `routing/page_composition` | Cohesive feature navigation and presentation contribution |
+| Future router delegate or UI controller | Root application widget or a flow shell | UI lifecycle, not graph lifecycle |
 | Application-wide best-effort AppEvent notification | `app/events` | App-owned catalog prevents feature cycles without misclassifying the notification as a DDD integration event |
-| Navigation capability shared by otherwise independent features | `app/routing` | Application UI owns semantic navigation and adapts it to routes |
-| Route registry and initial-stack policy | `app/routing/app_route_registry.dart` | Data/policy composition point that aggregates feature decoders |
-| Page catalog and narrow dependency mapping | `app/routing/app_pages.dart` | UI composition point that aggregates feature Page definitions |
-| Invalid route classification | `AppRouteFailureReason` | Privacy-safe app routing SPI without URI/query payload |
-| NotFound BLoC, DI, route, and screen | `feature/not_found` | Normal-graph route-recovery scenario |
-| Startup fallback `MaterialApp` | `app/view/StartupFailureApp` | Pre-DI framework wrapper |
-| Startup-failure BLoC, DI, and screen | `feature/startup_failure` | Isolated user-facing fallback scenario |
+| Future cross-feature navigation capability | Outer application UI composition | Narrow semantic port added only with a real caller; never EventBus or a global locator |
+| Future startup fallback UI | Startup-owned root UI composition | Pre-graph recovery receives only privacy-safe data |
 | Ephemeral action stream | Owning BLoC | Same-feature one-shot UI commands |
 
 `AppDependencies` is an immutable, flat, app-specific catalog read only at
@@ -599,12 +585,13 @@ failure callback may report directly; if that callback fails, its failure is
 forwarded once to the captured Zone.
 
 During the short pre-UI interval the composition root owns a successfully
-constructed graph. Page-catalog or synchronous `runApp` failure reports the
-primary failure through a guarded reporter call, awaits graph disposal, reports
-any cleanup aggregate, and only then mounts the privacy-safe fallback. Reporter
-failure never blocks cleanup. Successful `runApp` hands ownership to
-the root lifecycle adapter. Normal widget teardown initiates graph disposal and
-offers one aggregate to the latest failure callback.
+constructed graph. Normal-application construction or synchronous `runApp`
+failure reports the primary failure through a guarded reporter call, awaits
+graph disposal, reports any cleanup aggregate, and only then mounts the
+privacy-safe fallback. Reporter failure never blocks cleanup. Successful
+`runApp` hands ownership to the root lifecycle adapter. Normal widget teardown
+initiates graph disposal and offers one aggregate to the latest failure
+callback.
 
 The owner keeps the last accepted graph, child, and failure callback. Updating
 the same graph adopts the new child and callback. An invalid replacement leaves
@@ -808,7 +795,7 @@ service endpoint:
 4. `AppStartupConfiguration.fromValues` calls
    `CatalogConfiguration.fromValues`; its typed `catalog` field is the only
    package-specific value retained by the startup aggregate.
-5. `runApplication` passes `configuration.catalog` to
+5. The future composition root passes `configuration.catalog` to
    `buildAppDependencies`, which immediately passes it to the Catalog module
    factory. No unrelated module receives it.
 6. The CLI validator invokes the same composition parser. Because a business
@@ -962,13 +949,13 @@ after its capability decision; a remote reporter must have bounded completion
 and must not install duplicate global handlers.
 
 The base scaffold contains no vendor SDK and no artificial initializer list.
-The composition root invokes the top-level `initializeAppFramework` function
-once. The function is a subordinate operation, not a second composition root,
-and does not memoize the call or impose a shared retry and terminal-failure
-policy on SDKs that do not yet exist. When a concrete initializer is added, its
-documented reentrancy, retry, failure, and shutdown semantics determine the
-required guarding policy. Static `AppBootstrap`, `AppLauncher`, and generic
-startup coordinator classes are not part of the target.
+The Startup Source of Truth will decide whether a top-level subordinate
+framework initializer improves testing and cohesion; it must not become a
+second composition root or impose shared retry/terminal-failure policy on SDKs
+that do not yet exist. When a concrete initializer is added, its documented
+reentrancy, retry, failure, and shutdown semantics determine the required
+guarding policy. Static `AppBootstrap`, `AppLauncher`, and generic startup
+coordinator classes are not part of the target.
 
 ## Diagnostics and error-handler lifecycle
 
@@ -1373,13 +1360,13 @@ quiesce application work
 → await logging-module disposal
 ```
 
-The Startup phase first introduces the transitional seam of one logger, one
-reporter, and a narrow boundary factory. The Storage phase atomically replaces
-the logger seam with one optional `AppLoggingModule`; the boundary factory must
-receive the exact module logger and selected reporter, and no independent
-logger may create split-brain composition. The final order is module
-construction, fixed local reporter and boundary construction, boundary run,
-debug zone-mismatch policy, binding creation, unawaited owned non-failing
+Startup first establishes one logger, one reporter, and one boundary identity;
+its Source of Truth chooses the exact test seam. The Storage phase atomically
+replaces the standalone logger role with one optional `AppLoggingModule`; the
+boundary must receive the exact module logger and selected reporter, and no
+independent logger may create split-brain composition. The final order is
+module construction, fixed local reporter and boundary construction, boundary
+run, debug zone-mismatch policy, binding creation, unawaited owned non-failing
 persistence activation, Environment loading, Environment-dependent SDK work,
 graph and UI composition, then `runApp`. The fixed storage namespace is
 app-owned and never derived from rejected Environment values.
@@ -1498,54 +1485,34 @@ case. None is scaffolded by Diagnostics Core.
 
 ## Feature DI lifetime
 
-1. Use a feature-owned Page definition with direct constructor injection when
-   wiring is used once.
+1. Use direct constructor injection when wiring is used once.
 2. Use a Factory Scope when the same construction policy is reused by a
    subtree or several screens.
-3. Use a flow-shell `BlocProvider` when one BLoC instance must span routes.
+3. Use a flow-shell `BlocProvider` when one BLoC instance must span several
+   screens in one owned UI flow.
 
 A Factory Scope receives only narrow dependencies and exposes construction
 policy. It never receives `AppDependencies`, creates a BLoC from `build`, embeds
 `BlocProvider`, or owns the returned instance. `BlocProvider(create: ...)`
 below the Scope remains the instance owner.
 
-The root graph owner has no dependency lookup API. `app_pages.dart` narrows
-`AppDependencies` into feature Page definitions; those definitions pass ports
-to feature scopes and BLoCs through constructors. Do not invent a dependency
-or app-level factory solely to demonstrate DI.
-
-`DemoScope` captures the constructor-injected graph-owned event bus in its
-feature-local BLoC factory and leaves instance lifecycle to
-`BlocProvider(create: ...)`.
-
-`ActivityScope` demonstrates screen lifetime. Its Page definition injects the
-event bus, and `BlocProvider` owns `ActivityBloc` and its EventBus subscription
-when the screen leaves the tree. An event published before Activity opens is
-intentionally absent because the bus has no replay. If Activity required
-authoritative current data or history, the graph would expose an app-lifetime
-repository/store with `current + Stream` instead.
-
-`NotFoundScope` and `StartupFailureScope` are intentionally minimal scaffold
-extension points. Each creates a screen-lifetime BLoC through
-`BlocProvider(create: ...)`, which owns and closes the instance. Their sealed
-event bases have no concrete events until real recovery behavior appears; this
-preserves the lifecycle boundary without inventing fake use cases. The startup
-scope is additionally pre-DI: it receives only a safe diagnostic code and
-cannot read the graph lifecycle owner, normal routing, or `AppEventBus`.
+The root graph owner has no dependency lookup API. Future application UI
+composition reads `AppDependencies` only at an explicit outer boundary,
+narrows each facade/port immediately, and passes it to feature scopes and BLoCs
+through constructors. Do not invent a dependency or app-level factory solely
+to demonstrate DI.
 
 Widget teardown cannot be awaited by Flutter and mobile process termination
 may skip it entirely. A BLoC starts subscription cancellation before its first
 asynchronous gap. Required persistence and business completion remain awaited
 inside the repository or use-case operation and never move into `close()`.
 
-`Factory<T>` and `ParamFactory<T, P>` are shared function-type vocabulary, not
-app-level dependencies. A factory defines how feature composition creates an
-object; the caller owns the returned instance. `Factory<T>` fits construction
-without runtime input. `ParamFactory<T, P>` fits a route ID or argument while
-the closure captures infrastructure dependencies. Use a record or immutable
-parameter object when several values are needed rather than adding numbered
-factory typedefs. BLoC factories remain in feature DI and `BlocProvider(create:
-...)` owns the instances they return.
+`Factory<T>` is shared construction vocabulary, not an app-level dependency.
+A factory defines how feature composition creates an object; the caller owns
+the returned instance. Parameterized construction stays feature-local and uses
+an ordinary typed closure until a second real consumer justifies shared
+vocabulary. BLoC factories remain in feature DI and `BlocProvider(create: ...)`
+owns the instances they return.
 
 ### Catalog and Order Composer presentation
 
@@ -1558,28 +1525,25 @@ Object constants provide UI guidance, but each facade command validates raw
 input again. Presentation catches only the expected types documented for that
 operation; data-integrity and unexpected failures reach the root boundary.
 
-The reference Ordering UI is the app-level `feature/order_composer` workflow,
-not a third bounded context. It receives `CatalogFacade` for published-product
-discovery and `OrderingFacade` for Order behavior through Page composition.
-Catalog and Ordering themselves remain independent. The workflow provides an
-Order list and `/orders/:orderId` draft editor, creates persistent drafts,
-selects published products and quantities, replaces the whole line set, places
-or cancels an Order, and renders committed state only from Ordering watches.
+The future reference Ordering UI is an app-level workflow, not a third bounded
+context. It receives `CatalogFacade` for published-product discovery and
+`OrderingFacade` for Order behavior through outer application composition.
+Catalog and Ordering themselves remain independent. Exact screens, URLs, and
+navigation are selected only in the post-Startup reference-presentation phase.
 Ordering still repeats the authoritative Product Offers query through its ACL
 before mutation; presentation discovery never substitutes for that check.
 
-`OrdersBloc` owns list/create behavior. `OrderComposerBloc` owns one selected
-Order, product selection, quantities, replace/place/cancel commands, and its
-watch subscriptions. The useful `OrderId` result from `createDraft` is carried
-by a same-feature ephemeral navigation action, not AppEventBus.
+The presentation state machines own their watches and command state. A useful
+result from draft creation remains a direct application result or same-feature
+UI action, never an `AppEventBus` message.
 
 ### Localization
 
 The application uses Flutter generated localization with a root `l10n.yaml`
-and one canonical English ARB baseline. Product keys are feature-owned through
-stable prefixes such as `catalog`, `orders`, `orderComposer`, `activity`,
-`demo`, `notFound`, and `startupFailure`. Normal and startup-failure app shells
-install the same generated delegates.
+and one canonical English ARB baseline when the localization phase is accepted.
+Product keys are feature-owned through stable capability prefixes. Normal and
+fallback application shells install the same generated delegates when both
+consumers exist.
 
 Business packages remain Flutter-free and never return localized exceptions.
 UI kit owns visual semantics, not product vocabulary. Adding another locale or
@@ -1596,9 +1560,9 @@ package patch proves WCAG 2.2 AA contrast, 48dp targets, unrestricted scaling,
 200% and 320% layout behavior, reduced motion, and system-font compatibility.
 
 The root application adds a direct dependency only with the first accepted
-shell consumer. Normal and StartupFailure shells use the same theme assembly;
-feature-specific widgets do not move into the UI kit merely because they can
-be reused twice inside one product workflow.
+shell consumer. Normal and fallback shells use the same theme assembly when
+both exist; feature-specific widgets do not move into the UI kit merely because
+they can be reused twice inside one product workflow.
 
 ## Interaction channels and delivery semantics
 
@@ -1616,10 +1580,10 @@ be reused twice inside one product workflow.
 | Committed fact that must not be lost | Versioned integration event + durable delivery | Outbox, relay, and idempotent consumption |
 
 ```text
-Demo input event
-  ├── DemoState                         current UI data
-  ├── DemoAction                       same-feature one-shot UI command
-  └── DemoActionCompletedAppEvent      cross-feature best-effort fact
+feature input event
+  ├── feature state                    current UI data
+  ├── feature action                   same-feature one-shot UI command
+  └── reviewed AppEvent                optional cross-feature fact
 ```
 
 The similarly named concepts have different ownership and delivery semantics:
@@ -1660,10 +1624,11 @@ temporary state flag or reset transition. It does not mutate BLoC state and
 therefore does not by itself rebuild a `BlocBuilder`. Actions are not replayed
 and must not represent required work.
 
-Catalog applies this distinction explicitly. Loss or normal completion of its
-authoritative `watchItems()` subscription is persistent unavailability and
-keeps the last snapshot in state with a retry path. An expected failure of one
-add/update/delete command is a one-shot action. Retry owns at most one active
+Future Catalog presentation must apply this distinction explicitly. Loss or
+normal completion of its authoritative `watchItems()` subscription becomes
+persistent unavailable state and keeps the last snapshot with a retry path. An
+expected failure of one add/update/delete command is a one-shot action. Retry
+owns at most one active
 subscription, while data-integrity and other unexpected failures propagate to
 the root error boundary instead of becoming ordinary UI state.
 
@@ -1677,18 +1642,17 @@ being scattered among producer and consumer features and avoids a Demo ↔
 Activity dependency cycle. The domain-neutral bus and base event type remain
 in `core/event_bus`.
 
-Activity is intentionally a non-authoritative screen-lifetime projection. A
-late subscriber misses earlier Demo events, sequences may contain gaps, and
-recreating the screen starts a new observation window. This reference must not
-be copied for audit, billing, business counters, or any invariant. Code review
-must ask what happens if a proposed notification is lost; if the answer is a
-business inconsistency, `AppEventBus` is the wrong mechanism.
+The accepted bus and Demo notification remain documented extension points but
+have no production publisher/subscriber yet. Their bounded gap expires in the
+first post-Startup reference-presentation phase. That phase must demonstrate a
+loss-tolerant, non-authoritative screen-lifetime projection; if the scenario is
+cancelled, both extension points receive a removal review rather than remaining
+indefinitely by inertia.
 
-Navigation is a separate channel. `ActivityNavigation` lives in
-`app/routing` because it is an application-UI capability, not a
-low-level core concern. `AppNavigator` adapts that narrow contract to the
-concrete Activity route. Demo and Activity can therefore share semantics
-without importing one another or sending navigation through the EventBus.
+Navigation is a separate future channel. When a real cross-feature caller
+exists, the outer application UI may implement a narrow semantic navigation
+port without exposing another feature's route representation. Navigation never
+travels through the EventBus.
 
 Neither action stream nor event bus has replay or durable delivery. When a
 consumer needs the current value or cannot miss an update, use an owned
@@ -1701,89 +1665,37 @@ disposal stack closes the app-owned bus last.
 The global BLoC observer logs only BLoC, event, state, and action runtime types.
 It never stringifies payloads or `EphemeralBlocChange`.
 
-## Typed routing
+## Future routing boundary
 
-The package dependency is pinned to `rolter: 0.2.0`. `App` creates and disposes
-the route state and delegate; routing objects do not enter `AppDependencies`.
-`App` receives one synchronous, non-owning `RouteNodePageBuilder<AppRoute>`
-Strategy from application composition.
+No routing package or application routing implementation is accepted in the
+current scaffold. The first real multi-screen consumer after Startup triggers
+a separate comparison and Source of Truth on the then-current Flutter
+baseline. Earlier experimental implementations do not define the canonical
+contract.
 
-Feature routes are data-only `RouteNode` values. Each feature owns its route,
-`*RouteName` enum, strict decoder contribution, typed Page definition, feature
-DI, and view. A route enum's `value` is the single source for both the
-route name and decoder key. Every Page uses `route.pageKey`, and the page
-catalog dispatches by exact route runtime type rather than route value.
+The future phase must preserve these provider-neutral constraints:
 
-Every Flutter Page adapter uses the single predictable path
-`feature/<name>/routing/page_composition/<name>_route_page.dart`. Other routing
-files remain presentation-free. The adapter may import its route, Scope, and
-screen; it must not import the BLoC library, start I/O, navigate, or own a
-resource.
+- router state, delegates, controllers, and subscriptions belong to root UI or
+  flow-shell lifecycle, never the dependency graph;
+- bounded contexts, inner application layers, and BLoCs do not import a router
+  package or receive a global navigation handle;
+- navigation is not delivered through `AppEventBus`; a cross-feature caller
+  receives a narrow semantic UI port only when one is genuinely needed;
+- external locations are bounded, untrusted input; expected malformed input
+  becomes privacy-safe fallback state without swallowing programming failures;
+- URLs, parameters, history, and navigation state are potentially sensitive
+  and are not automatically logged, analyzed, or interpolated into errors;
+- public URL values are compatibility contracts and are never localized;
+- browser path deployment and platform deep links are accepted only with the
+  corresponding hosting/platform configuration and integration tests.
 
-`app_route_page_definition.dart` owns the Page-contribution SPI and its typed
-adapter. `app_route_page_catalog.dart` owns only indexing, duplicate rejection,
-and runtime dispatch. The interface and typed adapter stay together as one
-contract; the application catalog changes for a different reason.
-
-Application routing deliberately has two composition responsibilities:
-
-- `app_route_registry.dart` validates and merges decoder maps, selects
-  fallback, and owns initial-stack/normalization policy;
-- `app_pages.dart` maps the dependency catalog to narrow feature Page
-  contributions.
-
-These catalogs change for different reasons and are not merged into a module
-registry or `AppRoutingConfiguration`. Checked decoder composition rejects a
-duplicate route value before app-owned resource construction; the composition
-root explicitly evaluates the otherwise-lazy registry before building the
-graph.
-
-`AppRoutePageCatalog` rejects duplicate route types during construction. A
-missing Page definition fails safely when the route is first rendered;
-contract tests enumerate every supported route type instead of adding
-descriptors or code generation.
-
-`AppNavigator` implements narrow contracts such as `ActivityNavigation` and
-maps them to concrete feature routes without exposing those route classes to
-callers. Invalid external values are reported through an injected
-`AppRouteFallbackBuilder` as a safe `AppRouteFailureReason`. Feature decoders
-therefore do not import NotFound. Application registry fallback maps that
-reason to `NotFoundRoute`; the feature's Page contribution renders it. The
-route is excluded from history and stores no attempted URI or query value in
-params, state, page keys, logs, or UI.
-
-Startup failure follows a separate path because the normal graph may not
-exist. `StartupFailureApp` is a thin `MaterialApp` wrapper around
-`StartupFailureScope → BlocProvider → StartupFailureScreen`. It accepts only a
-safe diagnostic code and never provides raw errors, stack traces, environment
-values, normal graph services, or a generic retry of framework initialization.
-
-`NavigatorScope` stays above `MaterialApp.router` so routed pages can resolve
-the navigator facade. A Page definition may wrap its screen with feature DI. A
-flow scope belongs above only the routes that truly share one session BLoC; the
-base app does not install such a scope speculatively. Page builders may run
-repeatedly and must not start I/O, navigate, mutate route state, or create
-unowned disposable resources.
-
-The target reference routing phase starts with a flat two-route tree and the
-default `TreeUrlCodec`.
-Nested navigation, guards, and public-URL custom codecs remain supported
-extension points but are not instantiated without a real requirement.
-
-Navigation APIs have two intentionally different ownership models:
-
-- `DemoNavigation` is feature-owned. Its `toDemo()` operation performs a full
-  stack reset and may be used by Demo or application composition that
-  intentionally depends on Demo. Unrelated features must not import it.
-- `ActivityNavigation` is application-owned. It is a narrow cross-feature
-  capability that lets a caller open Activity without importing Activity's
-  route or implementation.
-
-The absence of a production caller does not by itself make a documented
-template extension point dead code. The scaffold may retain one when it
-represents a chosen pattern, has a concrete future scenario and test, creates
-no runtime initialization or artificial dependency, and does not require every
-feature to copy the abstraction.
+Do not add a provider-neutral router facade, dynamic registry, code generator,
+global navigator, or speculative nested/guard/result machinery before the
+selected provider and real scenarios show that it is needed. The phase must
+compare handwritten and generated configuration, file/setup ceremony,
+restoration, system back, deep links, lifecycle, testability, and feature
+addition cost. Popularity alone is not the decision, and an old reference
+implementation is not an obligation to preserve its abstractions.
 
 ## Session, application lifecycle, and isolates
 
@@ -1823,18 +1735,17 @@ failure.
 
 ## Testing
 
-Unit and widget tests cover environment parsing, safe diagnostics, root-handler
-ownership and restoration, scoped BLoC breadcrumbs/reporting, aggregate build
-rollback, cleanup ordering, graph ownership transfer, failed pre-handoff Page
-composition, graph owner disposal callbacks, feature DI, checked decoder
-composition, typed Page coverage, route round-trips, no-replay/live event
-delivery, action consumption, and router teardown.
+Accepted unit and widget tests cover environment parsing, safe diagnostics,
+root-handler ownership and restoration, scoped BLoC breadcrumbs/reporting,
+aggregate build rollback, cleanup ordering, graph ownership transfer, and graph
+owner disposal callbacks. Startup, presentation, live EventBus consumers, and
+routing add their own scenario coverage only in their accepted phases.
 
 Device-dependent integration scenarios run in separate processes:
 
 1. real `main` plus `env/test.env` reaches the normal production graph;
-2. `runApplication` plus a recording reporter exposes hidden async failures and
-   asserts the complete expected record set;
+2. the testable Startup entrypoint plus a recording reporter exposes hidden
+   async failures and asserts the complete expected record set;
 3. real `main` plus invalid configuration renders only the privacy-safe startup
    fallback.
 

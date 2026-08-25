@@ -82,12 +82,13 @@ The accepted dependency catalog currently contains `CatalogFacade` and
 repositories, Product Offers, the Catalog ACL, clock, and database module remain
 composition-only.
 
-Catalog and Ordering facades intentionally have no Flutter consumer through the
-Diagnostics and UI kit prerequisite phases. This bounded gap expires in the
-Routing/presentation phase; if that phase is cancelled or materially delayed,
-the unused outputs are removed. The accepted `main.dart` remains the simple
-scaffold entrypoint until the Startup phase, so this DI factory is tested
-production composition but is not yet live runtime wiring.
+Catalog and Ordering facades intentionally have no Flutter consumer before the
+first reference-presentation phase after Startup. If that phase is cancelled or
+moved beyond the next major roadmap review, the unused outputs receive a
+removal/revalidation review rather than remaining indefinitely by inertia. The
+accepted `main.dart` remains the simple scaffold entrypoint until Startup, so
+the DI factory is tested production composition but is not yet live runtime
+wiring.
 
 The autonomous DI snapshot passed isolated analysis, tests, DartDoc, full
 quality checks, and staged review without blocker, high, or medium findings.
@@ -124,11 +125,17 @@ provider contract is maintained in
 not repeated here.
 
 The accepted `main.dart` does not yet construct Diagnostics. This bounded
-runtime-consumer gap expires in Startup, after UI kit and presentation APIs are
-accepted. Startup record classes are not part of Core and arrive only with
-their real Startup consumer. If Startup is cancelled or materially redesigned,
-the unused boundary and observer extension points are re-reviewed rather than
-retained by inertia.
+runtime-consumer gap expires in Startup. UI kit, localization, presentation,
+and routing are not prerequisites. Startup record classes are not part of Core
+and arrive only with their real Startup consumer. If Startup is cancelled or
+materially redesigned, the unused boundary and observer extension points are
+re-reviewed rather than retained by inertia.
+
+The accepted `AppEventBus` and `DemoActionCompletedAppEvent` remain documented
+extension points but have no production publisher/subscriber. The concrete bus
+does not enter the graph until both roles have real consumers. Their bounded
+gap expires in the first reference-presentation phase after Startup; cancelling
+that scenario triggers a removal review.
 
 This phase does not accept `AppLoggingModule`, a support-log exporter, native
 cache or Web IndexedDB adapters, persistence dependencies, Startup records,
@@ -156,100 +163,80 @@ Remote diagnostics and analytics remain separate capability gates. No provider
 registry, transport, queue, interceptor pipeline, or analytics event hierarchy
 is accepted by this revision.
 
-## Next review: Enterprise UI kit
+## Next review: Startup Source of Truth
 
-**Entry criterion:** diagnostics is accepted. The package itself does not
-depend on diagnostics.
+**Entry criterion:** Diagnostics Core and the app-owned dependency graph are
+accepted.
 
-Accept `packages/libraries/ui_kit` as an autonomous reusable Flutter library
-before application presentation depends on it. It owns Material 3 theme
-assembly, light/dark/system variants, semantic ThemeExtension tokens,
-component themes, focus behavior, target sizes, text scaling, and reduced
-motion policy. It contains no product-specific widgets in v1.
+Prepare a decision-complete Startup specification before changing runtime. It
+must independently resolve:
 
-The root application adds the direct package dependency only with the later
-app-shell/presentation consumer snapshot.
+- normal application-widget handoff and stable public/test APIs;
+- binding, Environment, and Environment-dependent framework ordering;
+- one exact logger/reporter/boundary identity;
+- Startup records and their ordering;
+- graph construction, rollback, ownership transfer, and disposal reporting;
+- privacy-safe fallback mounting and fallback failure;
+- test-only seams without a second composition root;
+- future router compatibility without a speculative router factory.
 
-**Acceptance:** package analysis, tests and DartDoc are green; WCAG 2.2 AA,
-48dp targets, 200%/320% layout behavior, focus, light/dark/system, and
-reduced-motion contracts are reviewed.
+UI kit, localization, and routing are not Startup prerequisites.
 
-## Routing, presentation, Order Composer, and localization
+**Acceptance:** the specification has no blocker/high/medium finding and does
+not silently authorize runtime, dependency, or staging changes.
 
-**Entry criterion:** DI, diagnostics, and UI kit APIs are stable.
+## Startup implementation
 
-Accept one coherent Flutter presentation phase:
+**Entry criterion:** the separate Startup Source of Truth is accepted.
 
-- standardize every feature Page adapter under
-  `routing/page_composition/<feature>_route_page.dart`;
-- keep routes and decoders data-only;
-- make Scopes factory-only and let `BlocProvider(create: ...)` own BLoCs;
-- complete Catalog category, draft, publication, offer-update, archival,
-  deletion, observation, and retry UI;
-- add an app-level Order Composer using both `CatalogFacade` and
-  `OrderingFacade` without coupling the contexts;
-- add English generated localization and remove hard-coded product vocabulary;
-- install the accepted UI kit in normal and startup-failure shells.
+Implement only its reviewed API and ownership transaction. Startup closes the
+Diagnostics runtime-consumer gap and hands one successfully built graph to one
+root Flutter lifecycle owner. It does not add a router merely to make the
+application wrapper look complete.
 
-Order Composer provides `/orders` and `/orders/:orderId`, persistent draft
-creation, published-product selection, quantities, whole-line replacement,
-placement, cancellation, authoritative watches, and operation-specific
-failures. It uses Catalog only for product discovery; Ordering repeats the
-authoritative Product Offers query through its ACL before committing.
+**Acceptance:** Environment, framework, graph, handoff, cleanup, reporter, and
+fallback failures preserve original stacks and ownership; process-global tests
+remain isolated.
 
-**Acceptance:** route and Page coverage, duplicate rejection, fallback privacy,
-Scope/BLoC ownership, facade-only presentation, Value Object UI constraints,
-Catalog and Order Composer behavior, stream retry ownership, generated
-localization, accessibility, and widget tests are green.
+## Post-Startup multi-screen routing and reference presentation gate
 
-## Startup composition
+**Entry criterion:** Startup's normal-application handoff is stable and a real
+multi-screen reference scenario is selected.
 
-**Entry criterion:** DI, diagnostics, routing, localization, and Page
-composition have stable APIs.
+On the then-current Flutter baseline, compare the maintained routing options
+and choose the smallest maintained implementation that satisfies system
+back, restoration, Web/deep-link policy, lifecycle, privacy, testing, and
+feature-addition cost. Do not preserve an earlier experimental abstraction by
+default, and do not build an app-side router engine or generic provider-neutral
+facade.
 
-Keep `void main() => runApplication();` and make top-level `runApplication` the
-only composition root. Replace static `AppBootstrap` with the subordinate
-top-level `initializeAppFramework` function. Remove the production
-`pageCatalogBuilder` seam.
+This phase gives `CatalogFacade` and `OrderingFacade` their first presentation
+consumers, or explicitly re-reviews unused outputs. It may also provide the
+first real publisher/subscriber pair for the accepted `AppEventBus`; otherwise
+the bus and Demo notification receive their removal review. Navigation remains
+separate from EventBus.
 
-The startup transaction is:
+**Acceptance:** implementation selection and any external dependency pin are
+reviewed; routing remains in root UI lifecycle; packages/BLoCs do not import
+it; URL privacy and deployment boundaries are explicit; normal teardown and
+platform behavior are covered in proportion to the selected scenarios.
 
-```text
-construct one logger, one fixed local/no-op reporter, and one narrow boundary factory
-→ install AppErrorBoundary
-→ set debug zone-mismatch policy before binding
-→ initialize Flutter binding inside the guarded Zone
-→ start Stopwatch and log AppStartupStartedLogRecord
-→ load AppStartupConfiguration
-→ initialize Environment-dependent framework/SDK capabilities
-→ build and validate route registry
-→ build dependency graph
-→ build and validate Page catalog
-→ log AppStartupCompletedLogRecord
-→ runApp
-→ hand the graph to one root lifecycle owner
-```
+## Later autonomous presentation capabilities
 
-The binding is a minimal configuration-free prelude; Environment-dependent SDK
-work remains after validated Environment. The transitional injection seam is
-one optional `AppLogger`, one optional `AppErrorReporter`, and one narrow
-boundary factory that receives those exact collaborators. An independently
-injected logger and prebuilt boundary are not accepted together. Environment
-failures remain local-only with respect to remote providers. Graph-build
-rollback completes before the primary construction error is returned; outward
-reporting remains primary before secondary cleanup diagnostics. Reporter
-failure cannot block cleanup. Fallback mounting occurs only after cleanup, and
-fallback mount failure escapes to the root Zone.
-
-**Acceptance:** environment, framework, graph, Page, handoff, cleanup, reporter,
-fallback failures, logger identity, binding Zone, and Startup record ordering
-preserve original stacks and ownership.
+UI kit, generated localization, complete Catalog UI, Order Composer, and other
+presentation work are independent phases. They may be scheduled when a real
+consumer or delivery goal exists and do not block Startup or routing by
+default. Route/path contract values are never localized.
 
 ## Persistent Support Log
 
 **Entry criterion:** Startup has one stable logger identity and boundary
 factory, and exact persistence dependency pins have been reviewed against the
 accepted Flutter baseline.
+
+This phase has no technical dependency on routing. Its priority relative to
+the post-Startup routing gate is selected by a separate roadmap review after
+Startup is stable.
 
 Add the root-isolate `AppLoggingModule` as an autonomous Storage phase. It is
 owned by the composition root outside `AppDependencyGraph`, starts with bounded
@@ -432,8 +419,7 @@ The consolidated target is complete only when:
   accepted;
 - Catalog and Order Composer are facade-only real consumers with generated
   localization;
-- static startup coordination and the production Page-catalog replacement seam
-  are absent;
+- Startup has one composition root and no speculative router handoff seam;
 - startup and process-isolated integration failures preserve primary errors and
   cleanup ordering;
 - minimal CI reproduces clean-checkout quality and generator-freshness checks;

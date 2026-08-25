@@ -2,9 +2,9 @@
 
 Enterprise-oriented Flutter application scaffold with manual constructor
 injection, transactional dependency-graph construction, explicit resource
-ownership, typed Rolter navigation, BLoC presentation, one-shot UI actions,
-typed cross-feature best-effort notifications, and executable DDD reference
-contexts over a shared Drift persistence host.
+ownership, typed diagnostics, BLoC presentation foundations, documented
+cross-feature best-effort notifications, and executable DDD reference contexts
+over a shared Drift persistence host.
 
 This repository is the reusable scaffold itself, so its package name remains
 `template`. An application created from the scaffold should adopt its own
@@ -40,26 +40,24 @@ Flutter dart-defines are public client configuration. Never place passwords,
 private keys, service-account credentials, or private tokens in
 `env/*.env`.
 
-## Startup flow
+## Future startup flow
 
-This is the normative end-state. See the
-[architecture roadmap](doc/roadmap.md) for the accepted implementation state
-and intentionally deferred phases.
+Startup is the next separately reviewed runtime phase. The exact public APIs
+and normal-application handoff are intentionally not fixed before its Source of
+Truth. The required responsibility order is:
 
 ```text
-main → runApplication
-  → AppErrorBoundary installs root handlers
+composition root
+  → install one AppErrorBoundary and initialize Flutter binding in its Zone
   → load and validate AppStartupConfiguration
-  → initializeAppFramework(configuration.environment, logger)
-  → build and validate the route registry
+  → initialize Environment-dependent framework capabilities
   → build AppDependencies inside a transactional ownership boundary
-  → build feature-owned Page catalog with narrow dependencies
-  → runApp hands the accepted graph to one root lifecycle owner
-  → App owns routing and feature UI lifecycles
+  → runApp mounts one root Flutter lifecycle owner and the normal application
+  → on failure, clean up before mounting a privacy-safe fallback
 ```
 
 See [application architecture](doc/architecture.md) for the complete ownership,
-failure, routing, event, and feature-DI contracts. Coding and naming rules live
+failure, event, and feature-DI contracts. Coding and naming rules live
 in [code style](doc/code_style.md). Ordered work and capability-gated changes
 that are intentionally deferred from the base scaffold are recorded in the
 [architecture roadmap](doc/roadmap.md).
@@ -74,17 +72,13 @@ lib/
 │   ├── di/                   # App graph construction and ownership
 │   ├── diagnostics/          # Root handlers and privacy-safe diagnostics
 │   ├── events/               # Best-effort cross-feature AppEvent contracts
-│   ├── routing/              # Root route composition and navigation capabilities
 │   ├── startup/              # Process-global framework initialization
 │   └── view/                 # Framework/application wrappers, not feature screens
 ├── core/
 │   ├── di/typedefs/          # Construction-only Factory vocabulary
 │   └── event_bus/            # Domain-neutral event delivery mechanism
 └── feature/
-    ├── catalog/              # Facade-driven Drift reference presentation
-    ├── not_found/            # Normal-graph route recovery feature
-    ├── startup_failure/      # Isolated pre-DI startup recovery feature
-    └── <name>/               # BLoC, DI, routing/Page adapters, and view slice
+    └── <name>/               # Future BLoC, DI, and view slice
 
 env/                          # Public dart-define profiles
 doc/                          # Authored project documentation
@@ -284,14 +278,7 @@ that every feature must copy it.
 
 Target extension points, accepted only in their roadmap phases, are:
 
-- `DemoNavigation`: a feature-owned operation that resets the route stack to
-  Demo. Unrelated features must not import it.
-- `ActivityNavigation`: a narrow application-owned capability used when one
-  feature must navigate to Activity without importing Activity routes.
 - `Factory<T>`: feature-local construction without runtime parameters.
-- `ParamFactory<T, P>`: feature-local construction from a route or other
-  runtime parameter; use a record or value object when several values are
-  required.
 - `AppEventBus`: the neutral delivery mechanism in `core/event_bus`.
 - `app/events`: concrete best-effort cross-feature `AppEvent` notifications
   delivered by the bus. They are not durable DDD integration events.
@@ -299,14 +286,10 @@ Target extension points, accepted only in their roadmap phases, are:
 These APIs are not reasons to add artificial callers, runtime services, or
 matching boilerplate to every feature.
 
-## Recovery boundaries
+## Deferred application UI
 
-`App` and `StartupFailureApp` remain in `app/view` because they own framework
-lifecycle: the router and the fallback `MaterialApp`, respectively. The actual
-NotFound and startup-failure screens, BLoCs, and feature DI scopes live in
-`feature/not_found` and `feature/startup_failure`.
-
-Feature route decoders never instantiate NotFound directly. They report only a
-safe `AppRouteFailureReason` through the injected fallback strategy, and the
-application route registry selects the concrete recovery feature. Startup
-failure remains pre-DI and receives only a non-sensitive diagnostic code.
+The accepted scaffold does not yet contain a normal application wrapper,
+routing implementation, or startup-failure presentation. Startup will define
+the normal/fallback ownership handoff without depending on a router. A
+multi-screen routing and reference-presentation phase follows only after that
+handoff is stable.

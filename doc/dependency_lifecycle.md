@@ -123,8 +123,10 @@ it is not an outward reporter.
 
 The typed dependency catalog receives only real app-lifetime public facades or
 ports with accepted consumers, except for a bounded, tested consumer gap
-recorded in the roadmap. A disposable capability such as `AppEventBus` stays
-graph-owned and exposes only the non-owning roles required downstream.
+recorded in the roadmap. The accepted `AppEventBus` is not registered in the
+graph until real publisher and subscriber consumers exist together. At that
+point the graph owns the concrete bus and downstream code receives only its
+non-owning roles.
 
 ## Failure-atomic assemblies
 
@@ -203,27 +205,26 @@ The boundary may be reported to explicitly before `run`, without installing
 handlers or claiming the global lease, while automatic coverage begins only in
 `run`.
 
-The later Startup phase creates exactly one logger identity, one fixed local or
-no-op reporter, and one boundary made by a narrow factory that receives those
-exact collaborators. It does not accept both a prebuilt boundary and an
-independent logger, because that permits the boundary, Startup, and observer to
-emit through different identities. Startup also adds its two concrete record
-classes; Diagnostics Core does not predeclare them.
+The later Startup phase must create exactly one logger identity, one fixed
+local or no-op reporter, and one boundary built from those exact collaborators.
+Its separate Source of Truth will select the narrow test seam and public API;
+this document does not predeclare a boundary factory or application-widget
+constructor. Startup also adds its two concrete record classes; Diagnostics
+Core does not predeclare them.
 
 The practical order is:
 
 ```text
-construct logger and fixed reporter
-→ construct boundary from those exact collaborators
-→ boundary.run
+construct one logger, fixed reporter, and matching boundary
+→ enter boundary-owned root Zone
     → set debug zone-mismatch policy
     → initialize Flutter binding
     → log AppStartupStartedLogRecord
     → load Environment
     → initialize Environment-dependent framework/SDK capabilities
-    → build route registry, graph, and Page catalog
+    → build dependency graph
     → log AppStartupCompletedLogRecord
-    → runApp and hand graph ownership to the root widget
+    → mount the normal application widget and hand off graph ownership
 ```
 
 The binding step is a minimal configuration-free prelude. It no longer
@@ -436,30 +437,29 @@ Future<OperationResult> executeOperation(OperationInput input) async {
 
 ### Camera, BLE, and platform sessions
 
-- A session used by one Page belongs to that Page scope, not the app graph.
+- A session used by one screen belongs to that screen scope, not the app graph.
 - Permission requests are user-driven operations.
 - Native callbacks are detached before closing the native session.
 - Move a session to app/session lifetime only when background behavior is a
   real product requirement.
 
-## Feature delivery
+## Future presentation delivery
 
-Application Page composition reads the catalog once and passes narrow ports:
+The first real presentation composition reads the dependency catalog once and
+passes narrow ports through constructors:
 
 ```text
 AppDependencies
-  → buildAppPages
-      → buildCapabilityPageDefinition(facade: dependencies.capability)
-          → CapabilityScope(facade: facade)
-              → BlocProvider(create: (_) => CapabilityBloc(facade))
-                  → CapabilityScreen
+  → application UI composition
+      → CapabilityScope(facade: dependencies.capability)
+          → BlocProvider(create: (_) => CapabilityBloc(facade))
+              → CapabilityScreen
 ```
 
-The Page builder captures dependencies but owns none of them. It is
-synchronous and may run repeatedly. It must not start I/O, navigate, mutate
-route state, or allocate a disposable resource. Page-owned resources are
-created below the Page through `BlocProvider`, another provider, or
-`RouteScope`.
+The composition adapter borrows dependencies but owns none of them. It is
+synchronous and must not start I/O or allocate an unowned disposable resource.
+Screen-owned resources are created below that adapter through `BlocProvider`
+or another explicitly owning provider.
 
 ## Teardown and durability
 
