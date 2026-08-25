@@ -45,17 +45,20 @@ The local Git history has accepted these autonomous batches:
 | `0b61dd6` | Flutter 3.47 platform and toolchain baseline |
 | `7b710f3` | Ordering bounded context and Catalog ACL |
 | `538e194` | App-owned dependency graph |
-| Revision containing this roadmap | Application diagnostics |
+| `b0ea52e` | Application diagnostics |
+| `c3a1000` | Main routing deferral and Rolter reference extraction |
+| Revision containing this roadmap | Consolidated Architecture Source of Truth v9 |
 
-The Diagnostics row uses a self-reference because a commit cannot contain its
-own final hash. The next accepted roadmap update replaces it with that
-revision's hash.
+The v9 row uses a self-reference because a commit cannot contain its own final
+hash. The next accepted roadmap update replaces it with that revision's hash.
 
 The accepted repository therefore contains the `bounded_contexts/libraries`
 package taxonomy, a shared physical database, the Catalog business context,
 the Ordering bounded context and Catalog ACL, and the Flutter 3.47/Dart 3.13
-platform baseline and app dependency graph. The revision containing this
-snapshot accepts application diagnostics, but not live Startup wiring.
+platform baseline, app dependency graph, application diagnostics, and the
+provider-neutral routing deferral. The revision containing this roadmap accepts
+the consolidated v9 Startup/ownership target only; it does not add live Startup
+wiring.
 
 The working tree contains later implementations so adjacent APIs can be
 developed and tested together. UI kit, routing, presentation, startup, and
@@ -93,7 +96,7 @@ wiring.
 The autonomous DI snapshot passed isolated analysis, tests, DartDoc, full
 quality checks, and staged review without blocker, high, or medium findings.
 
-## Accepted by this revision: Application diagnostics
+## Accepted in `b0ea52e`: Application diagnostics
 
 Diagnostics Core v5.2.2 supersedes the unaccepted v5.2.1 candidate after an
 exact staged usage-scenario and reviewability audit. It remains one app-owned
@@ -163,22 +166,48 @@ Remote diagnostics and analytics remain separate capability gates. No provider
 registry, transport, queue, interceptor pipeline, or analytics event hierarchy
 is accepted by this revision.
 
+## Accepted by this revision: Consolidated architecture v9
+
+Source of Truth v9 replaces v8 and later overlapping amendments for Startup,
+process-global preparation, dependency composition, and resource ownership. It
+accepts documentation only:
+
+- future `runApplication` remains the sole composition root;
+- binding is created inside the root boundary Zone before Environment or
+  plugin work;
+- one subordinate top-level `initializeAppFramework` configures only
+  process/root-isolate global state;
+- app-lifetime resources are constructed inside the existing transactional
+  graph;
+- `AppDependencies` is a downstream facade/port delivery catalog, not an
+  inventory of modules, repositories, stores, or vendor clients;
+- repositories remain private context collaborators retained by application
+  services over borrowed stores;
+- Firebase/FCM remain illustrative placement recipes, not dependencies or an
+  implicitly scheduled provider phase.
+
+The v9 candidate changes only the six canonical or derived documentation
+files. Dirty Startup, routing, UI-kit, presentation, manifest, and integration
+files remain unaccepted. Runtime risk controls enter atomically with their
+owning Startup/provider phase rather than as placeholder code.
+
 ## Next review: Startup Source of Truth
 
-**Entry criterion:** Diagnostics Core and the app-owned dependency graph are
-accepted.
+**Entry criterion:** Source of Truth v9, Diagnostics Core, and the app-owned
+dependency graph are accepted.
 
-Prepare a decision-complete Startup specification before changing runtime. It
-must independently resolve:
+Prepare a decision-complete Startup implementation specification before
+changing runtime. It must apply the v9 ordering and ownership boundary and
+resolve the remaining runtime-specific decisions:
 
 - normal application-widget handoff and stable public/test APIs;
-- binding, Environment, and Environment-dependent framework ordering;
 - one exact logger/reporter/boundary identity;
 - Startup records and their ordering;
 - graph construction, rollback, ownership transfer, and disposal reporting;
 - privacy-safe fallback mounting and fallback failure;
 - test-only seams without a second composition root;
-- future router compatibility without a speculative router factory.
+- future router compatibility without a speculative router factory;
+- exact source/test allowlist and process-isolated integration scenarios.
 
 UI kit, localization, and routing are not Startup prerequisites.
 
@@ -350,6 +379,18 @@ Every phase review accounts for these recurring failure modes:
   replacements are accepted;
 - SOLID, GRASP, GoF, and DDD justify responsibilities and dependency direction,
   not additional class count.
+
+For Startup and integration work, the review must also map each applicable
+risk to a prevention control and a named proof in the owning phase. In
+particular: binding/Zone ordering requires an integration test; owned
+initialization requires register-before-initialize rollback coverage; immediate
+configuration narrowing requires an import/signature guard; repository
+exclusion from `AppDependencies` requires a delivery-surface guard; and
+process-global state requires process isolation or `finally` restoration. The
+detailed control matrix is maintained in
+[Dependency and resource lifecycle](dependency_lifecycle.md#extension-review-controls).
+Documentation-only phases prove scope through exact path and dependency deltas
+instead of creating placeholder runtime tests.
 
 ## Capability gates
 

@@ -42,19 +42,27 @@ private keys, service-account credentials, or private tokens in
 
 ## Future startup flow
 
-Startup is the next separately reviewed runtime phase. The exact public APIs
-and normal-application handoff are intentionally not fixed before its Source of
-Truth. The required responsibility order is:
+Startup is the next separately reviewed runtime phase. Source of Truth v9 fixes
+the subordinate `initializeAppFramework` contract and ownership boundaries;
+the remaining public/test APIs and normal-application handoff are selected by
+the Startup implementation specification. The required responsibility order
+is:
 
 ```text
-composition root
-  → install one AppErrorBoundary and initialize Flutter binding in its Zone
+main → future runApplication
+  → install one AppErrorBoundary
+  → initialize Flutter binding inside its Zone
   → load and validate AppStartupConfiguration
-  → initialize Environment-dependent framework capabilities
+  → call the subordinate initializeAppFramework function
   → build AppDependencies inside a transactional ownership boundary
   → runApp mounts one root Flutter lifecycle owner and the normal application
   → on failure, clean up before mounting a privacy-safe fallback
 ```
+
+`initializeAppFramework` configures only process/root-isolate global state,
+such as URL policy and the application BLoC observer. Database connections,
+repositories, network clients, subscriptions, and other app-lifetime resources
+are created by dependency composition so rollback and teardown have an owner.
 
 See [application architecture](doc/architecture.md) for the complete ownership,
 failure, event, and feature-DI contracts. Coding and naming rules live
@@ -118,6 +126,12 @@ the target. It owns the persistent Order aggregate and translates Catalog's
 Product Offers contract through an Ordering-owned Anti-Corruption Layer.
 Catalog never imports Ordering, and their query and write do not share a
 transaction.
+
+`AppDependencies` is the downstream delivery catalog, not a list of everything
+constructed by the graph. Context composition creates private repositories over
+borrowed stores; application services retain those repositories and expose only
+facades or other narrow ports through `AppDependencies`. Presentation never
+receives a repository, store, module, database, or vendor client.
 
 The target `packages/libraries/ui_kit` owns the shared Material 3 theme
 assembly and semantic design tokens used by both the normal application shell
@@ -239,11 +253,14 @@ connection race while exercising the same browser storage implementation.
    layers.
 5. Let that context own its typed `<Capability>Configuration.fromValues`, while
    the application environment loader remains the sole dart-define reader.
-6. Build a complex integration in its owning module factory, register the
-   returned module once through `AppResourceRegistrar`, and expose only consumed
-   application facades through `AppDependencies`. If presentation later needs
-   `AppEventBus`, graph composition owns the concrete disposable instance while
-   consumers receive only non-owning publisher/subscriber roles.
+6. Put only required process-global SDK preparation in
+   `initializeAppFramework`. Build an app-lifetime integration in its owning
+   module factory, register the returned module once through
+   `AppResourceRegistrar`, and expose only consumed application facades through
+   `AppDependencies`. Private repositories remain behind those facades. If
+   presentation later needs `AppEventBus`, graph composition owns the concrete
+   disposable instance while consumers receive only non-owning
+   publisher/subscriber roles.
 7. Regenerate Drift sources with `make generate-database` after SQL or DAO
    annotation changes. After every schema change, run `make database-schema`
    and review the snapshot plus generated verifier under

@@ -1,10 +1,12 @@
 # Application architecture
 
-This document is the normative target for startup, manual dependency injection,
-resource ownership, package topology, DDD collaboration, diagnostics, feature
-composition, routing, localization, and application events in `template`. It
-consolidates and replaces Architecture Source of Truth v7 and its later
-amendments.
+This document is the Consolidated Architecture Source of Truth v9 and the
+normative target for startup, manual dependency injection, resource ownership,
+package topology, DDD collaboration, diagnostics, feature composition,
+routing, localization, and application events in `template`. It consolidates
+and replaces Source of Truth v8 and its later amendments where they overlap.
+The preserved Rolter reference branch is not an authority for the main
+scaffold.
 
 Implementation-level conventions are documented separately in
 [code style](code_style.md). Accepted commits, review order, temporary
@@ -42,39 +44,46 @@ of truth.
 | Component | Responsibility |
 |---|---|
 | `main` | One-line delegate to the testable application entrypoint |
-| Future Startup composition root | Root diagnostics, binding prelude, Environment loading, graph composition, ownership handoff, startup fallback |
+| Future `runApplication` | The only composition root: root diagnostics, binding prelude, Environment loading, graph composition, ownership handoff, and startup fallback |
 | `AppErrorBoundary` | Root zone, Flutter/platform handlers, injected safe reporting |
 | `AppLoggingModule` | Future root-isolate support-log ownership outside the dependency graph |
-| Future framework initializer | Environment-dependent process-global framework and required SDK preparation after the binding prelude |
+| Future `initializeAppFramework` | Subordinate Environment-dependent process/root-isolate framework preparation after the binding prelude |
 | `buildAppDependencies` | Concrete app-level Database→Catalog→Ordering composition |
 | `buildAppDependencyGraph<T>` | Generic transactional construction over one private resource ledger |
-| `AppDependencies` | Immutable downstream port/facade catalog without lifecycle APIs |
+| `AppDependencies` | Immutable downstream delivery catalog of permitted ports/facades, not an inventory of graph objects |
 | `AppDependencyGraphOwner` | Flutter lifecycle adapter that claims one `AppDependencyGraph<Object>` once |
-| Future normal application widget | Root application UI lifecycle; exact API selected by the Startup phase |
+| Future normal application widget | Router-free root application UI lifecycle; exact API selected by the Startup phase |
 
 ## Startup sequence
 
 ```text
-composition root
-  → AppErrorBoundary installs Flutter/platform handlers and guarded root zone
-  → set debug zone-mismatch policy before binding initialization
-  → initialize the Flutter binding inside the guarded root zone
-  → future Persistent Support Log phase activates bounded local storage
-  → load and validate AppStartupConfiguration
-  → initialize Environment-dependent framework capabilities
-  → buildAppDependencyGraph creates one private ownership boundary
-  → buildAppDependencies receives only a register-only resource capability
-  → the graph seals registration and exposes AppDependencies
-  → runApp mounts one root lifecycle owner with the normal application child
+main
+→ future runApplication
+    → resolve one AppLogger and one AppErrorReporter
+    → construct one AppErrorBoundary from those exact identities
+    → boundary.run
+        → set debug zone-mismatch policy before binding initialization
+        → initialize the Flutter binding inside the guarded root zone
+        → log the Startup-started breadcrumb
+        → future Persistent Support Log activates bounded local storage
+        → load and validate AppStartupConfiguration
+        → initializeAppFramework applies process/root-isolate global policy
+        → buildAppDependencyGraph creates one private ownership boundary
+            → buildAppDependencies receives register-only authority
+        → construct the router-free normal application wrapper
+        → log the Startup-completed breadcrumb
+        → runApp hands the graph to one AppDependencyGraphOwner
 ```
 
 The boundary is installed before binding initialization, Environment parsing,
 or any future vendor reporter. In debug,
 `BindingBase.debugZoneErrorsAreFatal` is set before the binding exists; the
 binding is then initialized inside the guarded root zone. This configuration-
-free prelude is deliberately separate from Environment-dependent framework
-initialization, whose URL-strategy and required-SDK work may depend on the
-validated Environment.
+free prelude is deliberately separate from `initializeAppFramework`, whose URL
+strategy and required-SDK work may depend on the validated Environment. No
+plugin call occurs before the binding prelude. The first Startup implementation
+uses one top-level `initializeAppFramework` function rather than a static
+bootstrap class or a generic initializer registry.
 
 The later Persistent Support Log phase inserts bounded best-effort local
 activation after binding and before Environment parsing. That order permits a
@@ -83,7 +92,9 @@ persisting the rejected configuration. Until that phase is accepted, Startup
 uses the same sequence with the activation step absent. `runApp` remains inside
 the guarded zone. Production does not predeclare a router factory or a
 normal-application constructor. The Startup Source of Truth selects those
-public/test seams and tests own and dispose any injected boundary.
+public/test seams and tests own and dispose any injected boundary. Until that
+runtime phase is accepted, this sequence is a target contract rather than a
+claim about the current `main.dart`.
 
 ## Top-level boundaries
 
@@ -431,8 +442,10 @@ forbidding database access from presentation.
 
 | Value or action | Owner | Reason |
 |---|---|---|
-| Flutter binding, URL strategy, required global SDK initialization | Future Startup-owned framework initialization | Process-global startup preparation; each concrete initializer owns its reentrancy and retry policy |
+| Flutter binding and debug Zone policy | Future `runApplication` inside `AppErrorBoundary.run` | Configuration-free root prelude before Environment and plugin work |
+| URL strategy, global BLoC observer, required global SDK preparation | Future top-level `initializeAppFramework` | Process/root-isolate preparation after binding and Environment validation; each concrete initializer owns its reentrancy and retry policy |
 | Firebase/SDK global registry handle used only by an adapter | Local variable in the owning module factory | Borrowed process-global value, not downstream API |
+| Unique SDK handle that cannot be reacquired and requires deletion | Explicit root or graph owner selected with the integration | A `Future<void>` initializer must not discard lifecycle authority |
 | Simple HTTP/RPC client shared as app infrastructure | App module or direct leaf registration in `buildAppDependencies` | Explicit app ownership without exposing it to presentation |
 | Private client created inside a context module | The module | Avoid exposing internals and double disposal |
 | Application facade/query/command used by features | Owning context, exposed through `AppDependencies` | Preserve business ownership without leaking repositories |
@@ -452,19 +465,39 @@ forbidding database access from presentation.
 | Future startup fallback UI | Startup-owned root UI composition | Pre-graph recovery receives only privacy-safe data |
 | Ephemeral action stream | Owning BLoC | Same-feature one-shot UI commands |
 
-`AppDependencies` is an immutable, flat, app-specific catalog read only at
-explicit application composition points and narrowed immediately for each
-consumer. It contains only app-lifetime public application facades or ports
-with real accepted consumers. The sole temporary exception is an explicitly
-bounded consumer gap recorded in the roadmap and covered by a production
-composition test; an expired gap removes the dependency. Otherwise a dependency
-is added atomically with its first consumer. A disposable capability is exposed
-through non-owning roles rather than through its concrete lifecycle-bearing
-implementation. Modules and repositories retain their private collaborators.
+`AppDependencies` is not an inventory of every object constructed inside the
+application graph. It is an immutable, flat, app-specific **downstream delivery
+catalog** read only at explicit outer composition points and narrowed
+immediately for each consumer. It contains only the minimum app-lifetime public
+facades or ports that root composition is allowed to pass to presentation or
+another explicitly authorized outer-app boundary. A temporary exception
+requires a bounded consumer gap in the roadmap and a production composition
+test; an expired gap removes the field.
+
+The private object flow remains:
+
+```text
+graph-owned module
+→ borrowed store/client
+→ context-private repository
+→ application service/facade
+→ AppDependencies delivery field
+→ presentation
+```
+
+The application service or facade retains its repository, so excluding the
+repository from `AppDependencies` neither loses the object nor changes its
+lifetime. A lifecycle-free repository remains a private collaborator. If it
+later acquires a client, subscription, worker, timer, or other resource, that
+resource receives an explicit graph/module owner while downstream consumers
+still receive the facade or another narrow application port. A disposable
+capability likewise exposes non-owning roles instead of its concrete owner.
+
 `AppDependencies` has no `dispose`, lookup API, ledger, registrar,
 configuration aggregate, vendor client, repository, store, module, or BLoC
 factory. Graph resource ownership remains unavailable to features and leaf
-widgets.
+widgets. Renaming the accepted type would create churn without changing this
+authority boundary.
 
 Any internal lifecycle state is a private monotonic guard rather than
 presentation state and has no subscribers. A `ChangeNotifier`, `ValueNotifier`,
@@ -623,6 +656,13 @@ cleanup, preserve the primary error and stack, and surface cleanup failures
 separately. Foundation resources are created first so LIFO teardown closes
 their dependents first.
 
+Prefer creating a synchronous, unopened owner, registering it, and then
+awaiting its initialization. A configuration factory may perform validation or
+platform path lookup before registration only while it creates no connection,
+executor, subscription, or other resource requiring cleanup. If a capability
+cannot return an owner before asynchronous acquisition, its async factory owns
+failure-atomic cleanup until it successfully returns that owner to the graph.
+
 The reference production composition registers the physical database exactly
 once and constructs lifecycle-free Catalog and Ordering facades over borrowed
 stores:
@@ -654,6 +694,17 @@ The application catalog exposes `catalogApplication.facade` and `ordering`
 only while they have accepted app-lifetime consumers or an explicitly bounded,
 tested consumer gap recorded in the roadmap. The Product Offers view, ACL,
 repositories, stores, clock, and database module remain private to composition.
+
+Catalog repository ports live under the context's `domain/repository`, their
+store-backed implementations under `infrastructure/persistence`, and their
+construction under `composition`. `CatalogService` retains the item/category
+repositories and `CatalogProductOfferService` retains the authorized item
+repository view. Ordering follows the same pattern: `OrderingService` retains
+its private `OrderRepository`. Another bounded context consumes a Published
+Language through its own Anti-Corruption Layer, never its neighbor's
+repository. If an outward API looks repository-shaped, review whether it is
+actually an application query/command port, a Published Language contract, or
+an infrastructure detail before adding any delivery field.
 
 `AppDatabaseStores` is an app-composition-only typed facade. Each context owns
 its immutable store bundle and synchronous assembly, while the database module
@@ -931,10 +982,12 @@ assemblies, package configurations, or vendor SDK types.
 ## Fatal and best-effort initialization
 
 Fatal steps propagate to the startup boundary when the functional graph cannot
-operate without them: Flutter binding, a required database engine, or required
-Firebase initialization. Binding creation is a configuration-free prelude
-inside the guarded root zone. Environment-dependent framework and SDK choices
-still execute only after configuration validation.
+operate without them. Binding creation is a configuration-free prelude inside
+the guarded root zone. Environment-dependent process-global framework or SDK
+preparation executes only after configuration validation. Database connection,
+opening, and migration remain graph-owned even though Startup awaits them; only
+a vendor-documented process-global native-engine prerequisite could precede the
+graph, and the current Drift integration has no such step.
 
 Environment parsing occurs before any optional remote provider exists. In the
 future Persistent Support Log phase it occurs after a bounded app-local storage
@@ -943,19 +996,35 @@ it is neither a reporter nor a remote provider. Startup never forwards rejected
 configuration, its raw representation, or an Environment-derived storage name
 to logging or reporting.
 
-Best-effort steps catch and safely contain their own failure when functionality
-remains available. Optional analytics or remote crash reporting appears only
-after its capability decision; a remote reporter must have bounded completion
-and must not install duplicate global handlers.
+The base scaffold defines no generic best-effort initializer. `AppLogger`
+cannot accept a raw SDK failure, and no detached task may silently outlive the
+stage that started it. An optional analytics, remote-reporting, or other
+provider appears only after its capability review defines whether failure is
+contained, reported through an explicit authority, or represented by a
+degraded owned module. A remote reporter must have bounded completion and must
+not install duplicate global handlers.
 
 The base scaffold contains no vendor SDK and no artificial initializer list.
-The Startup Source of Truth will decide whether a top-level subordinate
-framework initializer improves testing and cohesion; it must not become a
-second composition root or impose shared retry/terminal-failure policy on SDKs
-that do not yet exist. When a concrete initializer is added, its documented
-reentrancy, retry, failure, and shutdown semantics determine the required
-guarding policy. Static `AppBootstrap`, `AppLauncher`, and generic startup
-coordinator classes are not part of the target.
+The Startup phase implements one top-level subordinate function:
+
+```dart
+Future<void> initializeAppFramework({
+  required AppEnvironment environment,
+  required AppLogger logger,
+});
+```
+
+Its initial body uses `Future<void>.sync` to configure the URL strategy and set
+one `AppBlocObserver` with the exact root logger. The function is not a second
+composition root, does not retain SDK handles, and does not impose shared retry
+or terminal-failure policy on SDKs that do not yet exist. Process-global work
+does not promise generic rollback: a successful earlier global step may remain
+installed if a later required step fails. Every concrete initializer therefore
+documents reentrancy, retry, partial-failure, and test-isolation semantics. A
+unique handle that cannot be reacquired and requires deletion receives an
+explicit root or graph owner instead of disappearing into this `Future<void>`.
+Static `AppBootstrap`, `AppLauncher`, generic startup coordinator classes, and
+initializer registries are not part of the target.
 
 ## Diagnostics and error-handler lifecycle
 

@@ -16,7 +16,7 @@ contract or a service-locator framework.
 
 | Lifetime | Typical owner | Examples |
 |---|---|---|
-| Process-global | Framework or concrete SDK initializer | Flutter binding, URL strategy, default Firebase initialization, FCM background-handler registration |
+| Process-global | Composition-root binding prelude or concrete SDK initializer | Flutter binding, URL strategy, default Firebase initialization, FCM background-handler registration |
 | Root Flutter isolate | Application composition root outside the dependency graph | `AppErrorBoundary`, application BLoC observer, future `AppLoggingModule` |
 | Application | Returned app graph and its root lifecycle owner | Cohesive app/context modules registered during dependency composition |
 | Session/tenant | Authenticated flow-shell owner, only after a real requirement exists | User-keyed cache, authenticated socket, tenant database |
@@ -59,6 +59,12 @@ For each concrete integration, answer in order:
 7. Is the resource tied to a Page or one operation? Keep it out of the app
    graph and use the narrower owner.
 
+An asynchronous configuration factory may perform validation or platform path
+lookup before registration only if it creates no connection, executor,
+subscription, or other resource requiring cleanup. A unique SDK handle that
+cannot be reacquired and must be deleted is not a `void` initialization side
+effect: select an explicit root or graph owner and transfer the handle to it.
+
 Do not add a module class for one ordinary object with no private lifecycle or
 partial-construction risk. Direct leaf registration is clearer in that case.
 Keep the current Database→Catalog→Ordering wiring linear and explicit. Split it
@@ -76,22 +82,19 @@ these packages or placeholder types until a real capability selects them.
 Future<AppDependencies> buildAppDependencies(
   AppResourceRegistrar resources,
 ) async {
-  // The module factory owns its database/client/repositories/subscriptions.
-  final capabilityModule = await buildCapabilityModule(
-    configuration: capabilityConfiguration,
-  );
-  resources.register(
-    capabilityModule,
+  // Prefer returning an unopened owner so the graph owns rollback before the
+  // first asynchronous acquisition.
+  final capabilityModule = resources.register(
+    createCapabilityModule(configuration: capabilityConfiguration),
     (module) => module.dispose(),
   );
+  await capabilityModule.initialize();
 
-  final notificationsModule = await buildNotificationsModule(
-    configuration: notificationsConfiguration,
-  );
-  resources.register(
-    notificationsModule,
+  final notificationsModule = resources.register(
+    createNotificationsModule(configuration: notificationsConfiguration),
     (module) => module.dispose(),
   );
+  await notificationsModule.initialize();
 
   return AppDependencies(
     capability: capabilityModule.facade,
@@ -121,11 +124,29 @@ final graph = await buildAppDependencyGraph<AppDependencies>(
 [Build transaction and ownership](architecture.md#build-transaction-and-ownership);
 it is not an outward reporter.
 
-The typed dependency catalog receives only real app-lifetime public facades or
-ports with accepted consumers, except for a bounded, tested consumer gap
-recorded in the roadmap. The accepted `AppEventBus` is not registered in the
-graph until real publisher and subscriber consumers exist together. At that
-point the graph owns the concrete bus and downstream code receives only its
+The typed dependency catalog is not an inventory of every object in the graph.
+It is the downstream delivery surface and receives only real app-lifetime
+public facades or ports with accepted consumers, except for a bounded, tested
+consumer gap recorded in the roadmap. Private composition remains reachable
+through those facades:
+
+```text
+graph-owned module
+→ borrowed store or client
+→ context-private repository
+→ application service/facade
+→ AppDependencies delivery field
+→ presentation
+```
+
+The service or facade retains its repository. Excluding repositories from
+`AppDependencies` neither loses them nor changes their lifetime; it prevents
+presentation from bypassing application policy. A repository that later owns
+a client, subscription, timer, or worker receives an explicit graph/module
+owner, while downstream code still receives a facade or another narrow
+application port. The accepted `AppEventBus` is not registered in the graph
+until real publisher and subscriber consumers exist together. At that point
+the graph owns the concrete bus and downstream code receives only its
 non-owning roles.
 
 ## Failure-atomic assemblies
@@ -221,7 +242,7 @@ construct one logger, fixed reporter, and matching boundary
     → initialize Flutter binding
     → log AppStartupStartedLogRecord
     → load Environment
-    → initialize Environment-dependent framework/SDK capabilities
+    → await initializeAppFramework(environment, logger)
     → build dependency graph
     → log AppStartupCompletedLogRecord
     → mount the normal application widget and hand off graph ownership
@@ -233,6 +254,25 @@ after Environment validation. The abbreviated recipe omits the surrounding
 startup `try`/`catch`; primary-first graph rollback and reporting remain
 normative in
 [Build transaction and ownership](architecture.md#build-transaction-and-ownership).
+
+The subordinate initializer has this target contract:
+
+```dart
+Future<void> initializeAppFramework({
+  required AppEnvironment environment,
+  required AppLogger logger,
+}) => Future<void>.sync(() {
+  configureUrlStrategy(environment.urlStrategy);
+  Bloc.observer = AppBlocObserver(logger: logger);
+});
+```
+
+Binding creation and dart-define loading stay outside this function. Its first
+implementation retains no handle and creates no graph resource. `Future.sync`
+keeps synchronous failures in the awaited Startup chain without an `async`
+body that contains no `await`. A future required SDK step may make the body
+genuinely asynchronous, but each SDK keeps its own reentrancy, retry, partial-
+failure, and test-isolation policy. There is no shared initializer registry.
 
 The Persistent Support Log phase later replaces the standalone logger seam
 atomically with one optional `AppLoggingModule`. The root composition owner
@@ -290,6 +330,12 @@ final ordering = createOrderingFacade(
 );
 ```
 
+`createAppDatabaseConfiguration` may validate values and perform platform path
+lookup, but it must not open a connection, create an executor, or retain a
+resource requiring cleanup. Path lookup serves one graph-owned database and is
+therefore not process-global initialization. The current Drift integration has
+no separate global engine-preparation step.
+
 The store catalog and context bundles are synchronous, immutable,
 lifecycle-free composition views. App DI narrows them immediately. Contexts
 borrow stores, own their repository mapping and application facades, and never
@@ -331,6 +377,8 @@ becomes a registered `SettingsModule` with explicit disposal.
 
 ### Firebase and Firestore
 
+- Firebase is an illustrative placement recipe, not a scaffold dependency or a
+  committed provider phase.
 - Required default `Firebase.initializeApp` belongs to process-global framework
   initialization when the selected Firebase integration requires it before
   graph construction.
@@ -343,11 +391,16 @@ becomes a registered `SettingsModule` with explicit disposal.
 - A secondary explicitly created Firebase app may have different ownership;
   follow its actual delete contract rather than treating every Firebase value
   as process-global.
+- A unique SDK handle that cannot be reacquired and requires deletion must be
+  returned to an explicit root or graph owner; a `Future<void>` framework
+  initializer must not silently discard it.
 
 ### Push notifications and FCM
 
 - Background handler registration is process-global and uses the plugin's
   required top-level entrypoint.
+- A background isolate creates its own minimal composition root and never
+  borrows the main isolate's graph, repositories, database, or EventBus.
 - Notification permission prompts are user-driven workflows, not framework
   initialization.
 - Token retrieval and message/opened-app subscriptions belong to a
@@ -442,6 +495,31 @@ Future<OperationResult> executeOperation(OperationInput input) async {
 - Native callbacks are detached before closing the native session.
 - Move a session to app/session lifetime only when background behavior is a
   real product requirement.
+
+## Extension review controls
+
+An integration review must connect each recurring risk to a concrete control;
+listing a hazard without a prevention or proof is insufficient.
+
+| Risk | Required control | Evidence added with the owning phase |
+|---|---|---|
+| Plugin work before binding or outside the boundary Zone | Fixed Startup ordering | Controlled Startup integration test |
+| Owned initialization before registration | Register-before-initialize API shape | Rollback test with a controlled failure |
+| Configuration helper acquires an unowned resource | Configuration-only helper contract | Source/architecture guard and failure test |
+| Borrowed registry singleton is registered | Borrowed/owned distinction in composition | Provider ownership test |
+| Unique SDK handle is discarded | Explicit root or graph owner | Provider contract and disposal test |
+| Whole startup aggregate leaks downstream | Immediate typed narrowing | Import/signature architecture guard |
+| Raw provider failure reaches `AppLogger` | Logger/reporter authority separation | Diagnostics guard and behavior test |
+| Optional work is detached | Every started Future is awaited or owned/tracked | Controlled-Completer provider test |
+| Repository enters the delivery catalog | Facade/port-only `AppDependencies` | Repository import/type guard |
+| Repository acquires a resource without an owner | Register the leaf or owning module | Lifecycle and rollback test |
+| Construction order is hidden by a locator or registry | Explicit root recipe | Architecture guard |
+| Process-global state leaks between tests | Process isolation or `finally` restoration | Separate integration scenario |
+| Flutter teardown is treated as durability | Persist in awaited operations, not `dispose` | Teardown and durability tests |
+
+These controls enter atomically with the relevant runtime capability. The
+documentation phase does not create fake providers, handles, or tests merely to
+reserve their names.
 
 ## Future presentation delivery
 

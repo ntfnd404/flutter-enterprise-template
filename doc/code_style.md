@@ -49,6 +49,10 @@ Application lifecycle and placement decisions belong in
   history. A short placement-oriented snippet in DartDoc or an extension point
   is allowed when it teaches the documented scaffold contract; detailed SDK
   examples belong in `doc/dependency_lifecycle.md`.
+- Keep the top-level Startup composition readable as an ordered recipe. Extract
+  a helper for a demonstrated lifecycle, provider, platform, or partial-
+  rollback boundary; do not replace visible construction order with an
+  initializer/module registry.
 
 ```dart
 final result = calculateResult();
@@ -164,6 +168,26 @@ part 'profile_state.dart';
 - Add inline comments for why an ownership or failure-policy decision exists,
   not for syntax already expressed by the code.
 - Keep examples privacy-safe and update them with the contract they illustrate.
+- Keep production Startup DartDoc concise. Firebase, FCM, database-engine,
+  native-SDK, and socket placement recipes belong in the dependency-lifecycle
+  guide rather than as commented placeholder calls in an initializer.
+
+## Startup and composition
+
+- Use the top-level `initializeAppFramework` function only for process/root-
+  isolate global preparation. Do not recreate a static bootstrap namespace or
+  a generic initializer protocol.
+- Keep binding creation and dart-define loading in the composition-root
+  sequence, outside `initializeAppFramework`.
+- When the current initializer body is synchronous but its stable contract is
+  `Future<void>`, use `Future<void>.sync` rather than an `async` method without
+  `await`.
+- Register an owned resource before awaiting its initialization. A preceding
+  configuration helper may validate or resolve a platform path but must not
+  acquire an unowned disposable resource.
+- Treat `AppDependencies` as a facade/port delivery catalog, not a graph object
+  catalog. Keep repositories, stores, modules, configurations, and vendor
+  clients private to composition.
 
 ## Errors and diagnostics
 

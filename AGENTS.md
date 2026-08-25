@@ -23,7 +23,8 @@ staging, runtime use, or dependency expansion out of order.
 
 - `lib/main.dart`: application composition root and startup fallback.
 - `lib/app`: application policy, wrappers, app-wide notification contracts, and UI composition.
-- `lib/app/startup`: process-global framework and required SDK preparation.
+- `lib/app/startup`: the subordinate top-level framework initializer and
+  process/root-isolate global preparation after the root binding prelude.
 - `lib/app/diagnostics/logging`: app-shell typed log-record SPI, local logger
   projection, and BLoC observer.
 - `lib/app/diagnostics/error_reporting`: root error boundary, privacy-safe
@@ -100,6 +101,12 @@ require a Flutter device.
   Flutter plugin behind the concrete adapter owned by its lifecycle
   capability; graph-owned adapters belong under `app/di/modules`, while the
   future process-root support-log adapters belong to Diagnostics.
+- Keep `runApplication` as the only composition root. It installs the boundary,
+  creates the Flutter binding in that Zone, loads typed configuration, invokes
+  one top-level `initializeAppFramework`, builds the graph, and performs the
+  root handoff. The subordinate initializer configures only process/root-
+  isolate global state; it never opens the database, creates repositories,
+  retains disposable SDK handles, builds the graph, or mounts UI.
 - Never put secrets in Flutter dart-defines.
 - Declare every Dart environment key in `AppEnvironmentKeys`; only
   `app_environment_loader.dart` reads it with `String.fromEnvironment`.
@@ -259,11 +266,13 @@ require a Flutter device.
 - Register every graph-owned resource immediately and exactly once. Never
   register borrowed resources or private internals already owned by a module,
   and never retain `AppResourceRegistrar` after graph construction.
-- Keep `AppDependencies` flat, typed, and lifecycle-free. It contains only real
+- Keep `AppDependencies` flat, typed, and lifecycle-free. It is a downstream
+  delivery catalog, not an inventory of graph objects. It contains only real
   app-lifetime public facades or ports with accepted consumers, except for an
-  explicitly bounded, tested consumer gap recorded in the roadmap. It never
-  exposes lookup, repositories, stores, modules, vendor clients, or BLoC
-  factories.
+  explicitly bounded, tested consumer gap recorded in the roadmap. Application
+  services retain their private repositories over borrowed stores; the catalog
+  never exposes lookup, repositories, stores, modules, configurations, vendor
+  clients, or BLoC factories.
 - Keep graph primitives independent of Flutter, business packages, Diagnostics,
   routing, and features. `AppDependencyGraphOwner` is the sole Flutter adapter,
   owns one graph once, and never provides dependency lookup or replacement.
@@ -274,6 +283,10 @@ require a Flutter device.
 - Keep composition explicit and constructor-based. Add private typed helpers or
   cohesive module factories only for demonstrated ownership or partial-rollback
   responsibilities; never add a universal module protocol or DI container.
+- Register an owned module before awaiting its initialization. A configuration
+  helper may validate or resolve a platform path before registration only when
+  it acquires no connection, executor, subscription, or other disposable
+  resource. Borrowed registry values are never registered.
 - Instantiate and register the accepted concrete `AppEventBus` only with real
   publisher and subscriber consumers; downstream code receives non-owning
   roles.
