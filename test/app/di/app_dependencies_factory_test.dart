@@ -6,6 +6,7 @@ import 'package:ordering/ordering.dart';
 import 'package:template/app/di/app_dependencies_factory.dart';
 import 'package:template/app/di/app_dependency_graph.dart';
 import 'package:template/app/environment/storage/app_storage_configuration.dart';
+import 'package:template/app/events/order_draft_created_app_event.dart';
 
 void main() {
   final binding = TestWidgetsFlutterBinding.ensureInitialized();
@@ -42,6 +43,14 @@ void main() {
       captureRollbackFailure: (_, _) {},
     );
     addTearDown(graph.dispose);
+
+    expect(
+      identical(
+        graph.dependencies.eventPublisher,
+        graph.dependencies.eventSubscriber,
+      ),
+      isTrue,
+    );
 
     await graph.dependencies.catalog.createCategory('Hardware');
     final category =
@@ -118,5 +127,17 @@ void main() {
         .watchOrder(orderId)
         .first;
     expect(cancelled.status, OrderStatus.cancelled);
+
+    await graph.dispose();
+    expect(
+      () => graph.dependencies.eventPublisher.emit(
+        const OrderDraftCreatedAppEvent(operationSequence: 1),
+      ),
+      throwsStateError,
+    );
+    expect(
+      () => graph.dependencies.eventSubscriber.on<OrderDraftCreatedAppEvent>(),
+      throwsStateError,
+    );
   });
 }

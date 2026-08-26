@@ -49,22 +49,23 @@ The local Git history has accepted these autonomous batches:
 | `c3a1000` | Main routing deferral and Rolter reference extraction |
 | `3e2f4cb` | Consolidated Architecture Source of Truth v9 |
 | Revision containing this roadmap | Startup runtime v1 |
+| Revision containing this roadmap | Enterprise Routing v2 and reference presentation |
 
-The Startup row uses a self-reference because a commit cannot contain its own
-final hash. The next accepted roadmap update replaces it with that revision's
-hash.
+Self-reference rows are replaced with their final hashes by the next accepted
+roadmap update because a commit cannot contain its own hash.
 
 The accepted repository therefore contains the `bounded_contexts/libraries`
 package taxonomy, a shared physical database, the Catalog business context,
 the Ordering bounded context and Catalog ACL, and the Flutter 3.47/Dart 3.13
 platform baseline, app dependency graph, application diagnostics, and the
-provider-neutral routing deferral. The revision containing this roadmap accepts
-the consolidated v9 Startup/ownership target and the revision containing this
-roadmap accepts its live Startup runtime.
+provider-neutral routing deferral. Later accepted revisions implement the
+consolidated v9 Startup/ownership target, live Startup runtime, and Enterprise
+Routing v2.
 
 The working tree may contain later implementations so adjacent APIs can be
-developed and tested together. UI kit, routing, feature presentation, and
-later integration scenarios remain review candidates until their own commits.
+developed and tested together. UI kit, localization, authenticated routing
+flows, and later integration scenarios remain review candidates until their
+own commits.
 
 ## Accepted in `538e194`: App-owned dependency graph
 
@@ -82,18 +83,15 @@ contract is maintained in
 [Build transaction and ownership](architecture.md#build-transaction-and-ownership),
 not repeated in this roadmap.
 
-The accepted dependency catalog currently contains `CatalogFacade` and
-`OrderingFacade`; the snapshot does not compose `AppEventBus`. Stores,
+The accepted dependency catalog contains `CatalogFacade`, `OrderingFacade`, and
+borrowed `AppEventPublisher`/`AppEventSubscriber` roles. App DI creates and
+registers one concrete `AppEventBus` first so LIFO teardown closes it last. Stores,
 repositories, Product Offers, the Catalog ACL, clock, and database module remain
 composition-only.
 
-Catalog and Ordering facades intentionally have no Flutter consumer before the
-first reference-presentation phase after Startup. If that phase is cancelled or
-moved beyond the next major roadmap review, the unused outputs receive a
-removal/revalidation review rather than remaining indefinitely by inertia.
-Startup now constructs their real production graph, but its router-free `App`
-does not receive the unused delivery catalog merely to close that presentation
-gap artificially.
+Catalog and Ordering facades now have real reference-presentation consumers.
+The graph delivery catalog reaches only root route composition, which narrows
+it immediately to feature scopes.
 
 The autonomous DI snapshot passed isolated analysis, tests, DartDoc, full
 quality checks, and staged review without blocker, high, or medium findings.
@@ -136,11 +134,10 @@ initialization installs the BLoC observer using that logger. UI kit,
 localization, presentation, and routing remain independent. Startup records
 are not part of Core; they are accepted with their real Startup consumer.
 
-The accepted `AppEventBus` and `DemoActionCompletedAppEvent` remain documented
-extension points but have no production publisher/subscriber. The concrete bus
-does not enter the graph until both roles have real consumers. Their bounded
-gap expires in the first reference-presentation phase after Startup; cancelling
-that scenario triggers a removal review.
+The accepted `AppEventBus` now has a real publisher/subscriber pair.
+`OrderDraftCreatedAppEvent` connects an in-flight Orders operation to a live
+Activity projection without becoming authoritative or carrying navigation.
+The former synthetic Demo completion event is removed.
 
 Diagnostics Core itself does not accept `AppLoggingModule`, a support-log
 exporter, native cache or Web IndexedDB adapters, persistence dependencies,
@@ -193,8 +190,8 @@ rather than as placeholder code.
 
 ## Accepted by this revision: Startup runtime v1
 
-Startup runtime v1 implements the v9 transaction without routing, feature
-presentation, UI kit, localization, Firebase, or persistent support logging:
+Startup runtime v1 originally implemented the v9 transaction without routing,
+feature presentation, UI kit, localization, Firebase, or persistent support logging:
 
 - `main` delegates to one `void runApplication` composition root;
 - one logger, reporter, and boundary identity encloses binding, configuration,
@@ -211,31 +208,25 @@ presentation, UI kit, localization, Firebase, or persistent support logging:
 - process-isolated tests cover the real database graph and invalid Environment.
 
 The only manifest addition is Flutter's SDK-owned `flutter_web_plugins` adapter.
-Normal `App` deliberately receives no unused facades. UI kit, localization, and
-routing are not Startup prerequisites.
+Startup remains provider-neutral orchestration. The later routing phase passes
+the built delivery catalog into normal `App`; UI kit and localization are not
+Startup or routing prerequisites.
 
-## Post-Startup multi-screen routing and reference presentation gate
+## Accepted by this revision: Enterprise Routing v2
 
-**Entry criterion:** Startup's normal-application handoff is stable and a real
-multi-screen reference scenario is selected.
+The post-Startup gate selects exact `go_router: 18.0.0` and a single handwritten
+app route catalog. Root `App` owns router lifecycle; features, BLoCs, and
+workspace packages remain provider-neutral. The accepted Material reference
+slice is Demo, Activity, Catalog, Orders, and static NotFound.
 
-On the then-current Flutter baseline, compare the maintained routing options
-and choose the smallest maintained implementation that satisfies system
-back, restoration, Web/deep-link policy, lifecycle, privacy, testing, and
-feature-addition cost. Do not preserve an earlier experimental abstraction by
-default, and do not build an app-side router engine or generic provider-neutral
-facade.
+Canonical locations are `/`, `/activity/:sequence`, `/catalog`, and `/orders`.
+Platform initial location is preserved; malformed or unsupported input is
+privacy-safe; valid Activity route configuration restores; system back returns
+child routes to Demo. Hash remains the deployment-independent default.
 
-This phase gives `CatalogFacade` and `OrderingFacade` their first presentation
-consumers, or explicitly re-reviews unused outputs. It may also provide the
-first real publisher/subscriber pair for the accepted `AppEventBus`; otherwise
-the bus and Demo notification receive their removal review. Navigation remains
-separate from EventBus.
-
-**Acceptance:** implementation selection and any external dependency pin are
-reviewed; routing remains in root UI lifecycle; packages/BLoCs do not import
-it; URL privacy and deployment boundaries are explicit; normal teardown and
-platform behavior are covered in proportion to the selected scenarios.
+Catalog and Ordering facades now have real presentation consumers. Orders and
+Activity prove a live, best-effort EventBus notification around an asynchronous
+committed operation without using it for navigation or authoritative state.
 
 ## Later autonomous presentation capabilities
 

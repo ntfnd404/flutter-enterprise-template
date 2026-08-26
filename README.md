@@ -3,8 +3,8 @@
 Enterprise-oriented Flutter application scaffold with manual constructor
 injection, transactional dependency-graph construction, explicit resource
 ownership, typed diagnostics, BLoC presentation foundations, documented
-cross-feature best-effort notifications, and executable DDD reference contexts
-over a shared Drift persistence host.
+cross-feature best-effort notifications, handwritten `go_router` composition,
+and executable DDD reference contexts over a shared Drift persistence host.
 
 This repository is the reusable scaffold itself, so its package name remains
 `template`. An application created from the scaffold should adopt its own
@@ -79,13 +79,18 @@ lib/
 │   ├── di/                   # App graph construction and ownership
 │   ├── diagnostics/          # Root handlers and privacy-safe diagnostics
 │   ├── events/               # Best-effort cross-feature AppEvent contracts
+│   ├── routing/              # One app-owned go_router composition catalog
 │   ├── startup/              # Composition root and framework initialization
 │   └── view/                 # Framework/application wrappers, not feature screens
 ├── core/
 │   ├── di/typedefs/          # Construction-only Factory vocabulary
 │   └── event_bus/            # Domain-neutral event delivery mechanism
-└── feature/
-    └── <name>/               # Future BLoC, DI, and view slice
+└── feature/                  # Vertical Flutter presentation slices
+    ├── demo/                 # Root reference screen and local UI behavior
+    ├── activity/             # Live non-authoritative AppEvent projection
+    ├── catalog/              # CatalogFacade reference presentation
+    ├── orders/               # OrderingFacade reference presentation
+    └── not_found/            # Static privacy-safe route recovery
 
 env/                          # Public dart-define profiles
 doc/                          # Authored project documentation
@@ -132,9 +137,10 @@ borrowed stores; application services retain those repositories and expose only
 facades or other narrow ports through `AppDependencies`. Presentation never
 receives a repository, store, module, database, or vendor client.
 
-The accepted normal and fallback wrappers deliberately use Flutter Material
-defaults. A future UI kit remains an autonomous capability rather than a
-Startup or routing prerequisite.
+The normal application wrapper owns one UI-lifetime router and receives the
+dependency delivery catalog after graph handoff. The fallback remains isolated
+from routing and graph dependencies. Both deliberately use Flutter Material
+defaults; a future UI kit remains autonomous rather than a routing prerequisite.
 
 A technical capability stays with its current owner until a real package
 boundary is justified by reuse, an independently useful public API, multiple
@@ -259,8 +265,8 @@ connection race while exercising the same browser storage implementation.
    module factory, register the returned module once through
    `AppResourceRegistrar`, and expose only consumed application facades through
    `AppDependencies`. Private repositories remain behind those facades. If
-   presentation later needs `AppEventBus`, graph composition owns the concrete
-   disposable instance while consumers receive only non-owning
+   the reference presentation uses `AppEventBus`, so graph composition owns the
+   concrete disposable instance while consumers receive only non-owning
    publisher/subscriber roles.
 7. Regenerate Drift sources with `make generate-database` after SQL or DAO
    annotation changes. After every schema change, run `make database-schema`
@@ -294,7 +300,7 @@ it when the API represents a chosen pattern, has a concrete future scenario,
 is documented and tested, adds no runtime initialization, and does not imply
 that every feature must copy it.
 
-Target extension points, accepted only in their roadmap phases, are:
+Current extension points are:
 
 - `Factory<T>`: feature-local construction without runtime parameters.
 - `AppEventBus`: the neutral delivery mechanism in `core/event_bus`.
@@ -304,9 +310,14 @@ Target extension points, accepted only in their roadmap phases, are:
 These APIs are not reasons to add artificial callers, runtime services, or
 matching boilerplate to every feature.
 
-## Deferred application UI
+## Application routing and deferred design system
 
-The accepted scaffold contains a router-free normal wrapper and a privacy-safe
-pre-graph startup fallback. It does not yet contain a routing implementation,
-feature presentation, UI kit, or localization. A multi-screen routing and
-reference-presentation phase follows only after this handoff is stable.
+The accepted application uses exact `go_router: 18.0.0` with one handwritten
+app-level route table for `/`, `/activity/:sequence`, `/catalog`, and `/orders`.
+Features and BLoCs receive semantic callbacks and never import the provider.
+Unknown, malformed, query-bearing, or fragment-bearing locations render a
+static NotFound screen without exposing the input. The root `App` owns and
+disposes the router before graph teardown.
+
+UI kit, localization, authenticated shells, native deep links, path-hosting
+deployment, and the full Orders composer remain independent future phases.

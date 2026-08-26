@@ -157,9 +157,15 @@ void main() {
     expect(dependencies, contains('final class const AppDependencies({'));
     expect(dependencies, contains('required final CatalogFacade catalog,'));
     expect(dependencies, contains('required final OrderingFacade ordering,'));
+    expect(
+      dependencies,
+      contains('required final AppEventPublisher eventPublisher,'),
+    );
+    expect(
+      dependencies,
+      contains('required final AppEventSubscriber eventSubscriber,'),
+    );
     expect(dependencies, isNot(contains('AppEventBus')));
-    expect(dependencies, isNot(contains('AppEventPublisher')));
-    expect(dependencies, isNot(contains('AppEventSubscriber')));
     expect(dependencies, isNot(contains('AppResourceRegistrar')));
     expect(dependencies, isNot(matches(RegExp(r'Future<void>\s+dispose\('))));
     expect(dependencies, isNot(matches(RegExp(r'\b(?:Map|dynamic)\b'))));
@@ -167,7 +173,7 @@ void main() {
     expect(dependencies, isNot(contains('BlocFactory')));
   });
 
-  test('the DI snapshot does not compose the future EventBus', () {
+  test('app DI owns one EventBus and exposes only borrowed roles', () {
     final eventBusImporters = dartFiles('lib/app/di')
         .where(
           (file) => file.readAsStringSync().contains('/event_bus/'),
@@ -175,19 +181,32 @@ void main() {
         .map((file) => file.path)
         .toList();
 
-    expect(eventBusImporters, isEmpty);
+    expect(
+      eventBusImporters,
+      unorderedEquals(<String>[
+        'lib/app/di/app_dependencies.dart',
+        'lib/app/di/app_dependencies_factory.dart',
+      ]),
+    );
+    final factory = File(
+      'lib/app/di/app_dependencies_factory.dart',
+    ).readAsStringSync();
+    expect(factory, contains('final eventBus = resources.register('));
+    expect(factory, contains('eventPublisher: eventBus'));
+    expect(factory, contains('eventSubscriber: eventBus'));
+    expect(
+      factory.indexOf('final eventBus = resources.register('),
+      lessThan(factory.indexOf('final databaseModule = resources.register(')),
+    );
   });
 
-  test('only app DI and the composition root may read the full graph API', () {
+  test('only app DI and runApplication read graph ownership APIs', () {
     final offenders = dartFiles('lib')
         .where((file) => !file.path.startsWith('lib/app/di/'))
         .where((file) {
           final contents = file.readAsStringSync();
 
           return contents.contains(
-                'package:template/app/di/app_dependencies.dart',
-              ) ||
-              contents.contains(
                 'package:template/app/di/app_dependency_graph.dart',
               ) ||
               contents.contains(
@@ -200,7 +219,16 @@ void main() {
     expect(offenders, [startupCompositionPath]);
   });
 
-  test('no accepted production caller reads dependency catalog fields yet', () {
+  test('dependency delivery is limited to root composition and app router', () {
+    final importers = dartFiles('lib')
+        .where((file) => !file.path.startsWith('lib/app/di/'))
+        .where(
+          (file) => file.readAsStringSync().contains(
+            'package:template/app/di/app_dependencies.dart',
+          ),
+        )
+        .map((file) => file.path)
+        .toList();
     final consumers = dartFiles('lib')
         .where((file) => !file.path.startsWith('lib/app/di/'))
         .where((file) {
@@ -212,7 +240,15 @@ void main() {
         .map((file) => file.path)
         .toList();
 
-    expect(consumers, isEmpty);
+    expect(
+      importers,
+      unorderedEquals(<String>[
+        'lib/app/routing/app_router.dart',
+        'lib/app/startup/run_application.dart',
+        'lib/app/view/app.dart',
+      ]),
+    );
+    expect(consumers, ['lib/app/routing/app_router.dart']);
   });
 
   test('core and workspace packages remain independent of app DI', () {

@@ -126,11 +126,11 @@ part 'profile_event.dart';
 part 'profile_state.dart';
 ```
 
-## Future navigation and URL names
+## Routing and URL names
 
-- Select and pin a routing implementation only with the first real
-  multi-screen consumer. Keep package-specific APIs at the outer application
-  UI boundary, never in bounded contexts, inner application code, or BLoCs.
+- Keep `go_router` package APIs in the root application UI boundary, never in
+  bounded contexts, feature widgets, inner application code, or BLoCs. The one
+  handwritten route catalog is an explicit composition point, not a registry.
 - Treat published paths and parameter names as compatibility contracts. Keep
   their values stable, non-localized, and owned by the feature or application
   policy that defines their meaning.
@@ -139,7 +139,7 @@ part 'profile_state.dart';
   privacy-safe application fallback without catching programming failures.
 - Treat URLs, parameters, and navigation state as potentially sensitive. Never
   interpolate them into logs, analytics, exception messages, or fallback UI.
-- Keep router delegates and controllers in the root UI lifecycle rather than
+- Keep router configuration and controllers in the root UI lifecycle rather than
   the dependency graph. UI composition callbacks remain synchronous,
   non-owning, and free of I/O or resource allocation.
 - Add path-based Web URLs or native deep links only with matching hosting,
@@ -187,8 +187,9 @@ part 'profile_state.dart';
   a generic initializer protocol.
 - Keep binding creation and dart-define loading in the composition-root
   sequence, outside `initializeAppFramework`.
-- Keep the normal and fallback root wrappers free of graph lookup, routing,
-  feature composition, and UI-kit dependencies. The fallback accepts only a
+- Keep the normal root wrapper free of graph lookup and feature imports; it owns
+  the router over one injected delivery-catalog identity. Keep the fallback
+  free of graph, routing, feature, and UI-kit dependencies and accept only a
   stable support code.
 - Record successful Startup completion after `runApp` returns. Do not describe
   that point as first-frame readiness or awaited process shutdown.

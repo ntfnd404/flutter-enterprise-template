@@ -118,8 +118,7 @@ void main() {
         .where((file) {
           final source = file.readAsStringSync();
 
-          return source.contains('app_dependencies.dart') ||
-              source.contains('app_dependency_graph.dart') ||
+          return source.contains('app_dependency_graph.dart') ||
               source.contains('app_resource_registrar.dart');
         })
         .map((file) => file.path)
@@ -134,22 +133,31 @@ void main() {
     );
   });
 
-  test('normal and fallback root views remain graph and router free', () {
-    for (final path in [normalAppPath, fallbackPath]) {
-      final source = File(path).readAsStringSync();
+  test('normal App owns routing while fallback remains isolated', () {
+    final normalApp = File(normalAppPath).readAsStringSync();
+    final fallback = File(fallbackPath).readAsStringSync();
 
-      expect(source, contains("import 'package:flutter/material.dart';"));
-      for (final forbidden in [
-        '/app/di/',
-        '/routing/',
-        '/feature/',
-        'ui_kit',
-        'flutter_bloc',
-        'AppDependencies',
-        'AppDependencyGraph',
-      ]) {
-        expect(source, isNot(contains(forbidden)));
-      }
+    expect(normalApp, contains("import 'package:flutter/material.dart';"));
+    expect(normalApp, contains("import 'package:go_router/go_router.dart';"));
+    expect(normalApp, contains('required this.dependencies'));
+    expect(normalApp, contains('_router = createAppRouter('));
+    expect(normalApp, contains('_router.dispose();'));
+    expect(normalApp, isNot(contains('/feature/')));
+    expect(normalApp, isNot(contains('ui_kit')));
+    expect(normalApp, isNot(contains('AppDependencyGraph')));
+
+    expect(fallback, contains("import 'package:flutter/material.dart';"));
+    for (final forbidden in [
+      '/app/di/',
+      '/routing/',
+      '/feature/',
+      'go_router',
+      'ui_kit',
+      'flutter_bloc',
+      'AppDependencies',
+      'AppDependencyGraph',
+    ]) {
+      expect(fallback, isNot(contains(forbidden)));
     }
   });
 
@@ -190,7 +198,7 @@ void main() {
     },
   );
 
-  test('the Web plugin is the only Startup dependency contract', () {
+  test('Startup and routing dependencies stay exact', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
     final lockfile = File('pubspec.lock').readAsStringSync();
 
@@ -199,7 +207,7 @@ void main() {
       contains('flutter_web_plugins:\n    sdk: flutter'),
     );
     expect(lockfile, contains('flutter_web_plugins:'));
-    expect(pubspec, isNot(contains('go_router:')));
+    expect(pubspec, contains('go_router: 18.0.0'));
     expect(pubspec, isNot(contains('rolter:')));
     expect(pubspec, isNot(contains('ui_kit:')));
   });

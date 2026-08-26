@@ -136,7 +136,7 @@ Future<void> _startApplication({
           stackTrace,
           kind: AppErrorReportKind.dependencyDisposal,
         ),
-        child: const App(),
+        child: App(dependencies: builtGraph.dependencies),
       ),
     );
     graph = null;

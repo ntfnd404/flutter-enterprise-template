@@ -13,6 +13,7 @@ import 'package:template/app/diagnostics/logging/app_log_record.dart';
 import 'package:template/app/diagnostics/logging/app_logger.dart';
 import 'package:template/app/environment/app_startup_configuration.dart';
 
+import '../../../support/noop_app_event_bus.dart';
 import '../../../support/noop_catalog_facade.dart';
 import '../../../support/noop_ordering_facade.dart';
 
@@ -138,6 +139,8 @@ AppStartupConfiguration validStartupConfiguration() =>
 AppDependencies testAppDependencies() => const AppDependencies(
   catalog: NoopCatalogFacade(),
   ordering: NoopOrderingFacade(),
+  eventPublisher: NoopAppEventBus(),
+  eventSubscriber: NoopAppEventBus(),
 );
 
 Future<AppDependencyGraph<Object>> unmountAndDisposeGraph(

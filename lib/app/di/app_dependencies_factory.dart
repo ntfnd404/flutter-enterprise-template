@@ -5,6 +5,7 @@ import 'package:template/app/di/app_dependencies.dart';
 import 'package:template/app/di/app_resource_registrar.dart';
 import 'package:template/app/di/modules/database/app_database_configuration_factory.dart';
 import 'package:template/app/environment/storage/app_storage_configuration.dart';
+import 'package:template/core/event_bus/app_event_bus.dart';
 
 /// Builds production dependencies for one application graph.
 ///
@@ -26,6 +27,13 @@ Future<AppDependencies> buildAppDependencies(
   AppResourceRegistrar resources, {
   required AppStorageConfiguration storageConfiguration,
 }) async {
+  // Register the bus first so LIFO teardown closes it after every feature and
+  // infrastructure resource. Downstream receives only borrowed roles.
+  final eventBus = resources.register(
+    AppEventBus(),
+    (resource) => resource.dispose(),
+  );
+
   // The shared physical database is infrastructure, not a business context.
   // Register it before opening so rollback owns a connection that fails while
   // applying schema work. Contexts receive narrow borrowed stores; they never
@@ -57,5 +65,7 @@ Future<AppDependencies> buildAppDependencies(
   return AppDependencies(
     catalog: catalogApplication.facade,
     ordering: ordering,
+    eventPublisher: eventBus,
+    eventSubscriber: eventBus,
   );
 }

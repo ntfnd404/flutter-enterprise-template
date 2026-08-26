@@ -89,6 +89,7 @@ void main() {
           tester,
           find.byKey(const ValueKey('normal-app-marker')),
         );
+        await pumpUntilFound(tester, find.text('Template running'));
         graphWasMounted = true;
 
         expect(find.text('Template running'), findsOneWidget);

@@ -144,10 +144,10 @@ The service or facade retains its repository. Excluding repositories from
 presentation from bypassing application policy. A repository that later owns
 a client, subscription, timer, or worker receives an explicit graph/module
 owner, while downstream code still receives a facade or another narrow
-application port. The accepted `AppEventBus` is not registered in the graph
-until real publisher and subscriber consumers exist together. At that point
-the graph owns the concrete bus and downstream code receives only its
-non-owning roles.
+application port. The accepted `AppEventBus` is registered first in the graph
+because Orders and Activity are real publisher/subscriber consumers. LIFO
+therefore closes it last, while downstream code receives only its non-owning
+roles.
 
 ## Failure-atomic assemblies
 
@@ -554,7 +554,7 @@ These controls enter atomically with the relevant runtime capability. The
 documentation phase does not create fake providers, handles, or tests merely to
 reserve their names.
 
-## Future presentation delivery
+## Presentation delivery
 
 The first real presentation composition reads the dependency catalog once and
 passes narrow ports through constructors:
@@ -571,6 +571,12 @@ The composition adapter borrows dependencies but owns none of them. It is
 synchronous and must not start I/O or allocate an unowned disposable resource.
 Screen-owned resources are created below that adapter through `BlocProvider`
 or another explicitly owning provider.
+
+The root `App` owns one `GoRouter`; route builders borrow the delivery catalog
+and pass only `CatalogFacade`, `OrderingFacade`, EventBus roles, or semantic
+navigation callbacks into feature scopes. Router disposal starts with root UI
+teardown. Route-owned BLoCs start subscription cancellation before graph LIFO
+cleanup reaches the EventBus or database.
 
 ## Teardown and durability
 

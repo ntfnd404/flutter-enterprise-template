@@ -1,6 +1,8 @@
 import 'dart:async';
 
 import 'package:template/core/event_bus/app_event.dart';
+import 'package:template/core/event_bus/app_event_publisher.dart';
+import 'package:template/core/event_bus/app_event_subscriber.dart';
 
 /// In-process broadcast bus for typed cross-feature application facts.
 ///
@@ -32,7 +34,7 @@ import 'package:template/core/event_bus/app_event.dart';
 /// await subscription.cancel();
 /// await eventBus.dispose();
 /// ```
-final class AppEventBus {
+final class AppEventBus implements AppEventPublisher, AppEventSubscriber {
   /// Creates an active event bus.
   AppEventBus();
 
@@ -42,6 +44,7 @@ final class AppEventBus {
   ///
   /// Past events are not replayed. Requesting a new event stream after disposal
   /// starts throws [StateError].
+  @override
   Stream<T> on<T extends AppEvent>() {
     if (_controller.isClosed) {
       throw StateError(
@@ -56,6 +59,7 @@ final class AppEventBus {
   ///
   /// Delivery is ordered per subscription. Publishing after disposal starts
   /// throws [StateError].
+  @override
   void emit(AppEvent event) => _controller.add(event);
 
   /// Closes the bus and returns its shared completion future.

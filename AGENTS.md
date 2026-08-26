@@ -45,6 +45,8 @@ staging, runtime use, or dependency expansion out of order.
 - `lib/core/event_bus`: domain-neutral best-effort event delivery mechanism.
 - `lib/app/events`: application-wide best-effort `AppEvent` contracts for
   independent Flutter features.
+- `lib/app/routing`: the single handwritten `go_router` composition catalog;
+  provider APIs do not enter features, BLoCs, or workspace packages.
 - `lib/app/view`: root framework/application wrappers, not a general screen catalog.
 - `lib/feature/<name>`: Flutter presentation and feature-local UI orchestration;
   `app` is never modeled as a feature.
@@ -114,10 +116,10 @@ require a Flutter device.
   authority has been released. That breadcrumb means root attachment was
   scheduled; it does not mean first frame, durable persistence, or awaited
   shutdown.
-- Keep `App` router-free and dependency-free until a real presentation
-  consumer is accepted. Keep `StartupFailureApp` pre-graph and render only the
-  stable Environment or Startup support code, never raw failure/configuration
-  data.
+- Keep `App` as the owner of one UI-lifetime `GoRouter` over one exact
+  `AppDependencies` identity. A real replacement requires a new widget State.
+  Keep `StartupFailureApp` pre-graph and render only the stable Environment or
+  Startup support code, never raw failure/configuration data.
 - Never put secrets in Flutter dart-defines.
 - Declare every Dart environment key in `AppEnvironmentKeys`; only
   `app_environment_loader.dart` reads it with `String.fromEnvironment`.
@@ -329,15 +331,17 @@ require a Flutter device.
   explicit retry path. Expected failure of one UI command is an ephemeral
   action; data-integrity and unexpected failures propagate to the root boundary.
 - Never use `AppEventBus` for navigation, SnackBars, current state, or required workflows.
-- No router is accepted in the current scaffold. Select and exact-pin one only
-  with the first real multi-screen consumer after Startup; do not add a router
-  factory or provider-neutral facade in advance.
-- A future router belongs to root UI lifecycle, not `AppDependencies` or the
-  dependency graph. Bounded contexts, inner layers, and BLoCs never import the
-  router package or use a global navigator/router locator.
+- Keep `go_router` exact-pinned and imported only by
+  `app/routing/app_router.dart` and `app/view/app.dart`. The router belongs to
+  root UI lifecycle, not `AppDependencies` or the dependency graph. Bounded
+  contexts, inner layers, features, and BLoCs never import the provider or use
+  a global navigator/router locator.
+- Keep one explicit handwritten top-level route composition catalog. Add a
+  route group only for a real independently governed flow; do not add route
+  registries, route DTOs, generated routes, or a provider-neutral facade.
 - Keep cross-feature navigation out of `AppEventBus`. Add a narrow semantic
-  application-UI port only when a real caller must navigate without depending
-  on another feature's implementation.
+  callback or application-UI port only when a real caller must navigate
+  without depending on another feature's implementation.
 - Treat URLs, parameters, and navigation state as potentially sensitive. Do
   not stringify them in Diagnostics, analytics, exceptions, or fallback UI.
 - Accept path-based Web URLs and platform deep links only together with their

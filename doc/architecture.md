@@ -52,7 +52,7 @@ of truth.
 | `buildAppDependencyGraph<T>` | Generic transactional construction over one private resource ledger |
 | `AppDependencies` | Immutable downstream delivery catalog of permitted ports/facades, not an inventory of graph objects |
 | `AppDependencyGraphOwner` | Flutter lifecycle adapter that claims one `AppDependencyGraph<Object>` once |
-| `App` | Router-free, dependency-free normal root wrapper after graph handoff |
+| `App` | Owns one UI-lifetime router over the handed-off dependency catalog |
 | `StartupFailureApp` | Pre-graph fallback that receives only a stable diagnostic code |
 
 ## Startup sequence
@@ -71,7 +71,7 @@ main
         → initializeAppFramework applies process/root-isolate global policy
         → buildAppDependencyGraph creates one private ownership boundary
             → buildAppDependencies receives register-only authority
-        → construct the router-free normal application wrapper
+        → construct the normal App with graph dependencies
         → runApp hands the graph to one AppDependencyGraphOwner
         → release local graph authority
         → log the Startup-completed breadcrumb
@@ -92,8 +92,8 @@ activation after binding and before Environment parsing. That order permits a
 support-safe Environment failure to reach app-local storage without reading or
 persisting the rejected configuration. Until that phase is accepted, Startup
 uses the same sequence with the activation step absent. `runApp` remains inside
-the guarded zone. Production predeclares neither a router factory nor a
-feature/presentation dependency bag. Tests own and dispose any boundary created
+the guarded zone. Startup passes the exact built delivery catalog to `App` but
+does not create or own the router. Tests own and dispose any boundary created
 through the exact factory seam after report and graph quiescence.
 
 `runApplication` returns `void`; the asynchronous Startup body stays inside the
@@ -148,14 +148,14 @@ extraction automatic. `common`, `utils`, and empty symmetry packages are not
 valid ownership models.
 
 `app` is deliberately not a feature: it has no user-facing use case or BLoC of
-its own. Future feature presentation keeps its DI boundary, BLoC, and view in
-the same vertical slice. Any future router-specific adapter remains an outer
-UI concern and cannot move router dependencies into a bounded context, inner
+its own. Feature presentation keeps its DI boundary, BLoC, and view in the same
+vertical slice. The accepted `go_router` adapter remains an outer UI concern
+and cannot move provider dependencies into a feature, bounded context, inner
 application code, or BLoC.
 
-`app/view` is not a catalog of screens. Accepted Startup defines only the root
-normal/fallback wrappers and ownership handoff without depending on a routing
-package. User-facing content and state remain in feature slices.
+`app/view` is not a catalog of screens. It contains the root normal/fallback
+wrappers and ownership handoff. Route composition lives in `app/routing`, while
+user-facing content and state remain in feature slices.
 
 ### Deliberate exclusions
 
@@ -1717,7 +1717,7 @@ temporary state flag or reset transition. It does not mutate BLoC state and
 therefore does not by itself rebuild a `BlocBuilder`. Actions are not replayed
 and must not represent required work.
 
-Future Catalog presentation must apply this distinction explicitly. Loss or
+Catalog presentation applies this distinction explicitly. Loss or
 normal completion of its authoritative `watchItems()` subscription becomes
 persistent unavailable state and keeps the last snapshot with a retry path. An
 expected failure of one add/update/delete command is a one-shot action. Retry
@@ -1735,17 +1735,15 @@ being scattered among producer and consumer features and avoids a Demo ↔
 Activity dependency cycle. The domain-neutral bus and base event type remain
 in `core/event_bus`.
 
-The accepted bus and Demo notification remain documented extension points but
-have no production publisher/subscriber yet. Their bounded gap expires in the
-first post-Startup reference-presentation phase. That phase must demonstrate a
-loss-tolerant, non-authoritative screen-lifetime projection; if the scenario is
-cancelled, both extension points receive a removal review rather than remaining
-indefinitely by inertia.
+The graph-owned bus has a real loss-tolerant flow. Orders publishes
+`OrderDraftCreatedAppEvent` only after a successful asynchronous draft commit;
+Activity observes it only while its screen exists. The event carries a bounded
+operation sequence, not an Order identity or an authoritative result. A missed
+event is normal and the Orders watch remains authoritative.
 
-Navigation is a separate future channel. When a real cross-feature caller
-exists, the outer application UI may implement a narrow semantic navigation
-port without exposing another feature's route representation. Navigation never
-travels through the EventBus.
+Navigation is a separate channel. App route composition supplies semantic
+single-operation callbacks without exposing provider objects or another
+feature's implementation. Navigation never travels through the EventBus.
 
 Neither action stream nor event bus has replay or durable delivery. When a
 consumer needs the current value or cannot miss an update, use an owned
@@ -1758,15 +1756,21 @@ disposal stack closes the app-owned bus last.
 The global BLoC observer logs only BLoC, event, state, and action runtime types.
 It never stringifies payloads or `EphemeralBlocChange`.
 
-## Future routing boundary
+## Routing boundary
 
-No routing package or application routing implementation is accepted in the
-current scaffold. The first real multi-screen consumer after Startup triggers
-a separate comparison and Source of Truth on the then-current Flutter
-baseline. Earlier experimental implementations do not define the canonical
-contract.
+The accepted provider is exact `go_router: 18.0.0`. `App` creates one router in
+`initState`, preserves it for the same `AppDependencies` identity, rejects an
+in-place identity replacement, and disposes it with root UI teardown. A new
+widget identity is the replacement boundary. The router is not graph-owned.
 
-The future phase must preserve these provider-neutral constraints:
+One handwritten `app_router.dart` is the explicit application composition
+catalog for `/`, `/activity/:sequence`, `/catalog`, and `/orders`. It injects
+narrow facades, EventBus roles, and semantic callbacks. There are no route
+objects, decoder/Page registries, generated routes, service locators, or global
+navigator keys. A separate route group appears only with a real autonomous
+flow such as an authenticated shell or onboarding policy.
+
+The provider boundary preserves these constraints:
 
 - router state, delegates, controllers, and subscriptions belong to root UI or
   flow-shell lifecycle, never the dependency graph;
@@ -1774,8 +1778,10 @@ The future phase must preserve these provider-neutral constraints:
   package or receive a global navigation handle;
 - navigation is not delivered through `AppEventBus`; a cross-feature caller
   receives a narrow semantic UI port only when one is genuinely needed;
-- external locations are bounded, untrusted input; expected malformed input
-  becomes privacy-safe fallback state without swallowing programming failures;
+- external locations are untrusted input; Activity accepts only canonical
+  positive ASCII decimal sequences through 2147483647, and query/fragment,
+  malformed, case-mismatched, or unknown input becomes a static NotFound view
+  without swallowing programming failures;
 - URLs, parameters, history, and navigation state are potentially sensitive
   and are not automatically logged, analyzed, or interpolated into errors;
 - public URL values are compatibility contracts and are never localized;
@@ -1783,12 +1789,11 @@ The future phase must preserve these provider-neutral constraints:
   corresponding hosting/platform configuration and integration tests.
 
 Do not add a provider-neutral router facade, dynamic registry, code generator,
-global navigator, or speculative nested/guard/result machinery before the
-selected provider and real scenarios show that it is needed. The phase must
-compare handwritten and generated configuration, file/setup ceremony,
-restoration, system back, deep links, lifecycle, testability, and feature
-addition cost. Popularity alone is not the decision, and an old reference
-implementation is not an obligation to preserve its abstractions.
+global navigator, or speculative nested/guard/result machinery. Restoration is
+limited to valid typed route configuration; BLoC state, commands, EventBus
+notifications, and invalid NotFound input are not restored. Hash URLs remain
+the hosting-independent default. Path hosting and native deep links require
+their own deployment tests.
 
 ## Session, application lifecycle, and isolates
 
@@ -1832,8 +1837,9 @@ Accepted unit and widget tests cover environment parsing, safe diagnostics,
 root-handler ownership and restoration, scoped BLoC breadcrumbs/reporting,
 aggregate build rollback, cleanup ordering, graph ownership transfer, graph
 owner disposal callbacks, Startup operation ordering, safe fallback, and
-normal handoff. Presentation, live EventBus consumers, and routing add their
-own scenario coverage only in their accepted phases.
+normal handoff, stable route input, system back, valid Activity restoration,
+router identity/disposal, responsive Catalog/Orders presentation, and the live
+loss-tolerant Orders-to-Activity EventBus flow.
 
 Device-dependent integration scenarios run in separate processes:
 

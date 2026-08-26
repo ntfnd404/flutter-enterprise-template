@@ -31,6 +31,10 @@ void main() {
           tester,
           find.byKey(const ValueKey('normal-app-marker')),
         );
+        await pumpUntilIntegrationWidget(
+          tester,
+          find.text('Template running'),
+        );
         graphMounted = true;
 
         expect(find.text('Template running'), findsOneWidget);
