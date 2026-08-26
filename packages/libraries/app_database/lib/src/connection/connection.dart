@@ -10,9 +10,10 @@ import 'unsupported.dart'
 ///
 /// This construction-only contract is package-internal. Production always
 /// uses [connect]; tests may inject a controlled connector at the module seam.
-typedef AppDatabaseConnector = Future<AppDatabaseConnection> Function(
-  AppDatabaseConfiguration configuration,
-);
+typedef AppDatabaseConnector =
+    Future<AppDatabaseConnection> Function(
+      AppDatabaseConfiguration configuration,
+    );
 
 /// Opens a physical database through the connector selected for this platform.
 Future<AppDatabaseConnection> connect(AppDatabaseConfiguration configuration) =>

@@ -12,6 +12,9 @@ import 'package:template/app/diagnostics/error_reporting/app_error_reporter.dart
 import 'package:template/app/diagnostics/logging/app_log_record.dart';
 import 'package:template/app/diagnostics/logging/app_logger.dart';
 import 'package:template/app/environment/app_startup_configuration.dart';
+import 'package:template/core/event_bus/app_event.dart';
+import 'package:template/core/event_bus/app_event_publisher.dart';
+import 'package:template/core/event_bus/app_event_subscriber.dart';
 
 import '../../../support/noop_catalog_facade.dart';
 import '../../../support/noop_ordering_facade.dart';
@@ -138,7 +141,22 @@ AppStartupConfiguration validStartupConfiguration() =>
 AppDependencies testAppDependencies() => const AppDependencies(
   catalog: NoopCatalogFacade(),
   ordering: NoopOrderingFacade(),
+  eventPublisher: _startupTestEventBusRoles,
+  eventSubscriber: _startupTestEventBusRoles,
 );
+
+const _startupTestEventBusRoles = _StartupTestEventBusRoles();
+
+final class _StartupTestEventBusRoles
+    implements AppEventPublisher, AppEventSubscriber {
+  const _StartupTestEventBusRoles();
+
+  @override
+  void emit(AppEvent event) {}
+
+  @override
+  Stream<T> on<T extends AppEvent>() => Stream<T>.empty();
+}
 
 Future<AppDependencyGraph<Object>> unmountAndDisposeGraph(
   WidgetTester tester,

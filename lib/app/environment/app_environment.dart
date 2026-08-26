@@ -25,7 +25,8 @@ final class AppEnvironment {
   /// ```
   ///
   /// `CapabilityConfiguration` is an illustrative name, not a type supplied by
-  /// the scaffold. The real type belongs to its owning `packages/<context>`.
+  /// the scaffold. The real type belongs to its owning
+  /// `packages/bounded_contexts/<context>`.
   /// The application loader remains the only production source that reads
   /// compile-time dart-defines. Owning factories receive raw values explicitly
   /// and create typed immutable configuration, while

@@ -1,7 +1,8 @@
 /// Catalog-specific persistence contract backed by the application database.
 ///
-/// Catalog infrastructure may import this narrow entrypoint. It does not
-/// expose Drift, generated rows, DAOs, or the physical application database.
+/// Catalog infrastructure and app composition may import this narrow
+/// entrypoint. It does not expose Drift, generated rows, DAOs, or the physical
+/// application database.
 ///
 /// {@category database-architecture}
 library;

@@ -63,7 +63,7 @@ abstract interface class CatalogItemsStore {
 
   /// Deletes a draft at [expectedRevision] and returns affected row count.
   ///
-  /// A missing item, stale revision, or non-draft lifecycle state returns
+  /// A missing item, a stale revision, or a non-draft lifecycle state returns
   /// zero. This persistence boundary does not interpret those domain reasons.
   Future<int> deleteDraft({
     required int id,

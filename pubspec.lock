@@ -623,6 +623,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.0"
+  rolter:
+    dependency: "direct main"
+    description:
+      name: rolter
+      sha256: "1298704af8fcc8fabab98b9b7af4f04b9b795497c419e85d4cc309a8dc9e3966"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.1"
   shelf:
     dependency: transitive
     description:

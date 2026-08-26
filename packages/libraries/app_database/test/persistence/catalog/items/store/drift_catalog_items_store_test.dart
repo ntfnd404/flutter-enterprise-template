@@ -108,6 +108,7 @@ void main() {
 
     final draftId = await _insertProduct(store, title: 'Draft');
     expect(await snapshots.moveNext(), isTrue);
+    expect(snapshots.current.single.id, draftId);
 
     expect(
       await store.deleteDraft(id: draftId, expectedRevision: 1),

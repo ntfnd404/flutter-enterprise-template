@@ -29,8 +29,13 @@ final class CatalogCategoriesDao extends DatabaseAccessor<ApplicationDatabase>
   ).insert(CatalogCategoriesCompanion.insert(name: name));
 
   /// Changes category activation and returns the affected row count.
-  Future<int> setCategoryActive({required int id, required bool isActive}) =>
+  Future<int> setCategoryActive({
+    required int id,
+    required bool isActive,
+  }) =>
       (update(catalogCategories)..where((table) => table.id.equals(id))).write(
-        CatalogCategoriesCompanion(isActive: Value<bool>(isActive)),
+        CatalogCategoriesCompanion(
+          isActive: Value<bool>(isActive),
+        ),
       );
 }

@@ -1,0 +1,11 @@
+dartdoc:
+  categories:
+    application-architecture:
+      markdown: doc/architecture.md
+      displayName: Application architecture
+    dependency-lifecycle:
+      markdown: doc/dependency_lifecycle.md
+      displayName: Dependency lifecycle
+  categoryOrder:
+    - application-architecture
+    - dependency-lifecycle

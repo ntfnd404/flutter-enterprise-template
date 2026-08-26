@@ -1,5 +1,5 @@
 name: template
-description: "A new Flutter project."
+description: "Template project."
 publish_to: 'none'
 version: 0.1.0+1
 
@@ -22,6 +22,8 @@ dependencies:
   ordering: 0.1.0
   path: 1.9.1
   path_provider: 2.1.6
+  rolter: 0.2.1
+  ui_kit: 0.1.0
 
 dev_dependencies:
   flutter_test:

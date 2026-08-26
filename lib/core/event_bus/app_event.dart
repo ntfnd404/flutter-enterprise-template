@@ -3,7 +3,8 @@
 /// Concrete events live in `app/events` so independent presentation features
 /// can communicate without importing one another. They are best-effort
 /// notifications rather than current state, domain events, or durable workflow
-/// messages.
+/// messages. An [AppEvent] is deliberately not a DDD integration event: code
+/// that requires delivery must use an awaited port or durable messaging.
 abstract base class AppEvent {
   /// Creates an application event.
   const AppEvent();
