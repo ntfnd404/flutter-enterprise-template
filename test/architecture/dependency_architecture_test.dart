@@ -10,10 +10,11 @@ void main() {
   const registrarPath = 'lib/app/di/app_resource_registrar.dart';
   const failurePath = 'lib/app/di/app_resource_disposal_exception.dart';
   const compositionPath = 'lib/app/di/app_dependencies_factory.dart';
+  const startupCompositionPath = 'lib/app/startup/run_application.dart';
 
   test('generic graph primitives remain Flutter and business neutral', () {
     final offenders =
-        <String>[
+        [
           graphPath,
           registrarPath,
           failurePath,
@@ -41,7 +42,7 @@ void main() {
         .map((file) => file.path)
         .toList();
 
-    expect(flutterAware, <String>[ownerPath]);
+    expect(flutterAware, [ownerPath]);
   });
 
   test('database platform dependency stays in its concrete adapter', () {
@@ -52,7 +53,7 @@ void main() {
         .map((file) => file.path)
         .toList();
 
-    expect(pathProviderImporters, <String>[
+    expect(pathProviderImporters, [
       'lib/app/di/modules/database/database_native_path_io.dart',
     ]);
   });
@@ -122,17 +123,17 @@ void main() {
         .map((file) => file.path)
         .toList();
 
-    expect(callers, <String>[ownerPath]);
+    expect(callers, [ownerPath]);
   });
 
   test('business composition is isolated from graph primitives', () {
-    const entrypoints = <String, List<String>>{
-      'package:app_database/app_database_composition.dart': <String>[
+    const entrypoints = {
+      'package:app_database/app_database_composition.dart': [
         compositionPath,
         'lib/app/di/modules/database/app_database_configuration_factory.dart',
       ],
-      'package:catalog/catalog_composition.dart': <String>[compositionPath],
-      'package:ordering/ordering_composition.dart': <String>[compositionPath],
+      'package:catalog/catalog_composition.dart': [compositionPath],
+      'package:ordering/ordering_composition.dart': [compositionPath],
     };
 
     for (final MapEntry(key: entrypoint, value: expected)
@@ -177,7 +178,7 @@ void main() {
     expect(eventBusImporters, isEmpty);
   });
 
-  test('only app DI may read the full dependency catalog or graph', () {
+  test('only app DI and the composition root may read the full graph API', () {
     final offenders = dartFiles('lib')
         .where((file) => !file.path.startsWith('lib/app/di/'))
         .where((file) {
@@ -196,7 +197,7 @@ void main() {
         .map((file) => file.path)
         .toList();
 
-    expect(offenders, isEmpty);
+    expect(offenders, [startupCompositionPath]);
   });
 
   test('no accepted production caller reads dependency catalog fields yet', () {

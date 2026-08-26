@@ -216,22 +216,15 @@ runtime and maintenance cost without behavior.
 
 ### Logger and startup timing
 
-Diagnostics Core deliberately has no live `main.dart` consumer. It provides a
-synchronous logger, a strict asynchronous local/no-op reporter, a root boundary,
-and the BLoC observer as tested extension points. Raw errors and nullable
-original stacks go only to `AppErrorReporter`; approved records go only to
-`AppLogger`. Logger implementations complete validation and their synchronous
-sink/enqueue handoff before returning; they never call the boundary or reporter.
-The boundary may be reported to explicitly before `run`, without installing
-handlers or claiming the global lease, while automatic coverage begins only in
-`run`.
-
-The later Startup phase must create exactly one logger identity, one fixed
-local or no-op reporter, and one boundary built from those exact collaborators.
-Its separate Source of Truth will select the narrow test seam and public API;
-this document does not predeclare a boundary factory or application-widget
-constructor. Startup also adds its two concrete record classes; Diagnostics
-Core does not predeclare them.
+Startup's `runApplication` composition root is the first live consumer of
+Diagnostics Core; `main.dart` only delegates to it. The composition root creates
+exactly one logger identity, one fixed local reporter, and one boundary built
+from those exact collaborators. Raw errors and nullable original stacks go only
+to `AppErrorReporter`; approved records go only to `AppLogger`. Logger
+implementations complete validation and their synchronous sink/enqueue handoff
+before returning; they never call the boundary or reporter. The boundary may be
+reported to explicitly before `run`, without installing handlers or claiming
+the global lease, while automatic coverage begins only in `run`.
 
 The practical order is:
 
@@ -244,8 +237,9 @@ construct one logger, fixed reporter, and matching boundary
     → load Environment
     → await initializeAppFramework(environment, logger)
     → build dependency graph
-    → log AppStartupCompletedLogRecord
     → mount the normal application widget and hand off graph ownership
+    → release local graph authority
+    → log AppStartupCompletedLogRecord
 ```
 
 The binding step is a minimal configuration-free prelude. It no longer
@@ -255,16 +249,35 @@ startup `try`/`catch`; primary-first graph rollback and reporting remain
 normative in
 [Build transaction and ownership](architecture.md#build-transaction-and-ownership).
 
-The subordinate initializer has this target contract:
+The composition root reports an Environment-loader failure with its original
+object/stack and renders only `APP-ENVIRONMENT-001`. Other post-binding Startup
+primaries render only `APP-STARTUP-001`. A graph-construction rollback finishes
+inside the graph transaction; its secondary aggregate is retained locally and
+reported only after the primary. A successfully built graph remains locally
+owned until `runApp` returns, and a pre-handoff failure is disposed before the
+fallback is mounted. Reporter failure never blocks either cleanup path.
+
+The subordinate initializer has this accepted contract:
 
 ```dart
 Future<void> initializeAppFramework({
   required AppEnvironment environment,
   required AppLogger logger,
-}) => Future<void>.sync(() {
+}) => Future.sync(() {
   configureUrlStrategy(environment.urlStrategy);
   Bloc.observer = AppBlocObserver(logger: logger);
 });
+```
+
+The composition root calls it with an already validated configuration and the
+same logger identity used by Startup and the root boundary:
+
+```dart
+final configuration = loadAppStartupConfiguration();
+await initializeAppFramework(
+  environment: configuration.environment,
+  logger: logger,
+);
 ```
 
 Binding creation and dart-define loading stay outside this function. Its first
@@ -273,6 +286,26 @@ keeps synchronous failures in the awaited Startup chain without an `async`
 body that contains no `await`. A future required SDK step may make the body
 genuinely asynchronous, but each SDK keeps its own reentrancy, retry, partial-
 failure, and test-isolation policy. There is no shared initializer registry.
+For example, a later provider-specific implementation may contain required
+steps shaped like these when their selected SDK contracts demand them:
+
+```dart
+await Firebase.initializeApp();
+FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+await NativeDatabaseEngine.prepare();
+```
+
+The names are illustrative, not scaffold dependencies or placeholder runtime
+calls. The current Drift integration needs no process-global engine step. A
+step placed here is required and propagates failure. An optional analytics or
+observability provider instead owns a reviewed degradation/reporting policy and
+never sends its raw failure through `AppLogger`.
+
+Do not open a Drift database, obtain preferences for a repository, construct a
+network client, start a socket/session, or create a Sentry/Crashlytics transport
+in this initializer. Those objects have root, graph/module, feature, page, or
+operation ownership as specified below. A unique disposable SDK handle must be
+returned to one of those owners rather than disappearing inside `Future<void>`.
 
 The Persistent Support Log phase later replaces the standalone logger seam
 atomically with one optional `AppLoggingModule`. The root composition owner

@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:template/app/diagnostics/logging/app_log_record.dart';
 import 'package:template/app/diagnostics/logging/records/app_bloc_log_records.dart';
 import 'package:template/app/diagnostics/logging/records/app_error_log_records.dart';
+import 'package:template/app/diagnostics/logging/records/app_startup_log_records.dart';
 
 final class _Component {}
 
@@ -18,14 +19,14 @@ final class _Failure implements Exception {}
 void main() {
   group('built-in records', () {
     test('expose exact unique static descriptors and typed fields', () {
-      final records = <_RecordExpectation>[
+      final records = [
         _RecordExpectation(
           record: const AppBlocCreatedLogRecord(_Component),
           staticDescriptor: AppBlocCreatedLogRecord.recordDescriptor,
           eventName: 'app.bloc.created',
           severity: AppLogSeverity.info,
           dataClass: AppLogDataClass.debugOnly,
-          fields: const <_RecordedField>[
+          fields: const [
             _RecordedField('component_type', 'debug_type', _Component),
           ],
         ),
@@ -35,7 +36,7 @@ void main() {
           eventName: 'app.bloc.event',
           severity: AppLogSeverity.info,
           dataClass: AppLogDataClass.debugOnly,
-          fields: const <_RecordedField>[
+          fields: const [
             _RecordedField('component_type', 'debug_type', _Component),
             _RecordedField('event_type', 'debug_type', _Event),
           ],
@@ -50,7 +51,7 @@ void main() {
           eventName: 'app.bloc.state_changed',
           severity: AppLogSeverity.info,
           dataClass: AppLogDataClass.debugOnly,
-          fields: const <_RecordedField>[
+          fields: const [
             _RecordedField('component_type', 'debug_type', _Component),
             _RecordedField(
               'previous_state_type',
@@ -66,7 +67,7 @@ void main() {
           eventName: 'app.bloc.action',
           severity: AppLogSeverity.info,
           dataClass: AppLogDataClass.debugOnly,
-          fields: const <_RecordedField>[
+          fields: const [
             _RecordedField('component_type', 'debug_type', _Component),
             _RecordedField('action_type', 'debug_type', _Action),
           ],
@@ -80,7 +81,7 @@ void main() {
           eventName: 'app.bloc.error_breadcrumb',
           severity: AppLogSeverity.warning,
           dataClass: AppLogDataClass.debugOnly,
-          fields: const <_RecordedField>[
+          fields: const [
             _RecordedField('component_type', 'debug_type', _Component),
             _RecordedField('error_type', 'debug_type', _Failure),
           ],
@@ -91,7 +92,7 @@ void main() {
           eventName: 'app.bloc.closed',
           severity: AppLogSeverity.info,
           dataClass: AppLogDataClass.debugOnly,
-          fields: const <_RecordedField>[
+          fields: const [
             _RecordedField('component_type', 'debug_type', _Component),
           ],
         ),
@@ -103,7 +104,7 @@ void main() {
           eventName: 'app.diagnostics.error_reported',
           severity: AppLogSeverity.error,
           dataClass: AppLogDataClass.supportSafe,
-          fields: const <_RecordedField>[
+          fields: const [
             _RecordedField('report_code', 'support_code', 'APP-ROOT-001'),
           ],
         ),
@@ -113,11 +114,35 @@ void main() {
           eventName: 'app.diagnostics.reporter_failed',
           severity: AppLogSeverity.error,
           dataClass: AppLogDataClass.supportSafe,
-          fields: const <_RecordedField>[
+          fields: const [
             _RecordedField(
               'support_code',
               'support_code',
               'APP-REPORT-001',
+            ),
+          ],
+        ),
+        _RecordExpectation(
+          record: const AppStartupStartedLogRecord(),
+          staticDescriptor: AppStartupStartedLogRecord.recordDescriptor,
+          eventName: 'app.startup.started',
+          severity: AppLogSeverity.info,
+          dataClass: AppLogDataClass.supportSafe,
+          fields: const [],
+        ),
+        _RecordExpectation(
+          record: AppStartupCompletedLogRecord(
+            const Duration(microseconds: 17),
+          ),
+          staticDescriptor: AppStartupCompletedLogRecord.recordDescriptor,
+          eventName: 'app.startup.completed',
+          severity: AppLogSeverity.info,
+          dataClass: AppLogDataClass.supportSafe,
+          fields: const [
+            _RecordedField(
+              'duration',
+              'support_duration',
+              Duration(microseconds: 17),
             ),
           ],
         ),
@@ -144,6 +169,21 @@ void main() {
           reason: 'Every built-in event name/version pair must be unique.',
         );
       }
+    });
+
+    test('rejects a negative startup duration without rendering its value', () {
+      expect(
+        () => AppStartupCompletedLogRecord(
+          const Duration(microseconds: -1),
+        ),
+        throwsA(
+          isA<ArgumentError>().having(
+            (error) => error.message,
+            'message',
+            'Startup duration cannot be negative.',
+          ),
+        ),
+      );
     });
   });
 }

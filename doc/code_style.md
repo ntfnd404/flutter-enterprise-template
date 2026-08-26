@@ -53,6 +53,10 @@ Application lifecycle and placement decisions belong in
   a helper for a demonstrated lifecycle, provider, platform, or partial-
   rollback boundary; do not replace visible construction order with an
   initializer/module registry.
+- Keep test overrides on `runApplication` narrow and operation-shaped: a
+  configuration loader, framework initializer, dependency factory, and exact
+  diagnostics collaborators. Do not turn them into registries, option bags, or
+  a second composition root.
 
 ```dart
 final result = calculateResult();
@@ -168,9 +172,13 @@ part 'profile_state.dart';
 - Add inline comments for why an ownership or failure-policy decision exists,
   not for syntax already expressed by the code.
 - Keep examples privacy-safe and update them with the contract they illustrate.
-- Keep production Startup DartDoc concise. Firebase, FCM, database-engine,
-  native-SDK, and socket placement recipes belong in the dependency-lifecycle
-  guide rather than as commented placeholder calls in an initializer.
+- Keep production Startup DartDoc focused. A public initializer includes its
+  minimal call example and concise placement/ownership warnings when they
+  prevent misuse. A scaffold extension point may keep one concise inline block
+  at the exact insertion location when that block prevents future resources
+  from receiving the wrong lifecycle owner. Detailed Firebase, FCM, database-
+  engine, native-SDK, and socket recipes remain in the dependency-lifecycle
+  guide; do not add inactive placeholder implementations.
 
 ## Startup and composition
 
@@ -179,9 +187,14 @@ part 'profile_state.dart';
   a generic initializer protocol.
 - Keep binding creation and dart-define loading in the composition-root
   sequence, outside `initializeAppFramework`.
+- Keep the normal and fallback root wrappers free of graph lookup, routing,
+  feature composition, and UI-kit dependencies. The fallback accepts only a
+  stable support code.
+- Record successful Startup completion after `runApp` returns. Do not describe
+  that point as first-frame readiness or awaited process shutdown.
 - When the current initializer body is synchronous but its stable contract is
-  `Future<void>`, use `Future<void>.sync` rather than an `async` method without
-  `await`.
+  `Future<void>`, use context-inferred `Future.sync` rather than an `async`
+  method without `await` or a repeated obvious type argument.
 - Register an owned resource before awaiting its initialization. A preceding
   configuration helper may validate or resolve a platform path but must not
   acquire an unowned disposable resource.

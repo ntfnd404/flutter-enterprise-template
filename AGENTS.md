@@ -21,10 +21,11 @@ staging, runtime use, or dependency expansion out of order.
 
 ## Architecture
 
-- `lib/main.dart`: application composition root and startup fallback.
+- `lib/main.dart`: one-line production entrypoint delegating to Startup.
 - `lib/app`: application policy, wrappers, app-wide notification contracts, and UI composition.
-- `lib/app/startup`: the subordinate top-level framework initializer and
-  process/root-isolate global preparation after the root binding prelude.
+- `lib/app/startup`: the sole `runApplication` composition root, its
+  subordinate framework initializer, and process/root-isolate global
+  preparation after the root binding prelude.
 - `lib/app/diagnostics/logging`: app-shell typed log-record SPI, local logger
   projection, and BLoC observer.
 - `lib/app/diagnostics/error_reporting`: root error boundary, privacy-safe
@@ -63,14 +64,16 @@ staging, runtime use, or dependency expansion out of order.
 - `lib/feature/<name>/di`: feature BLoC construction.
 - `BlocProvider(create: ...)`: BLoC instance ownership.
 
-Do not add GetIt, a global service registry, static `AppBootstrap`,
-`AppLauncher`, `AppBootstrapper`, or a second composition-root class.
+Do not add GetIt, a global service registry, a static startup coordinator,
+launcher/bootstrapper class, or a second composition root.
 
 ## Commands
 
 ```text
 make check
 make test-database-web
+make test-integration DEVICE=<device>
+make test-integration-startup-failure DEVICE=<device>
 make run-local
 make run-dev
 make run-prod
@@ -107,6 +110,14 @@ require a Flutter device.
   root handoff. The subordinate initializer configures only process/root-
   isolate global state; it never opens the database, creates repositories,
   retains disposable SDK handles, builds the graph, or mounts UI.
+- Log `AppStartupCompletedLogRecord` only after `runApp` returns and local graph
+  authority has been released. That breadcrumb means root attachment was
+  scheduled; it does not mean first frame, durable persistence, or awaited
+  shutdown.
+- Keep `App` router-free and dependency-free until a real presentation
+  consumer is accepted. Keep `StartupFailureApp` pre-graph and render only the
+  stable Environment or Startup support code, never raw failure/configuration
+  data.
 - Never put secrets in Flutter dart-defines.
 - Declare every Dart environment key in `AppEnvironmentKeys`; only
   `app_environment_loader.dart` reads it with `String.fromEnvironment`.

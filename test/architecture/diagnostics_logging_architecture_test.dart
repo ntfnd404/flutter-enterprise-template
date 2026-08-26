@@ -13,9 +13,12 @@ void main() {
   const observerPath = '$loggingRoot/app_bloc_observer.dart';
   const blocRecordsPath = '$loggingRoot/records/app_bloc_log_records.dart';
   const errorRecordsPath = '$loggingRoot/records/app_error_log_records.dart';
-  const recordPaths = <String>[
+  const startupRecordsPath =
+      '$loggingRoot/records/app_startup_log_records.dart';
+  const recordPaths = [
     blocRecordsPath,
     errorRecordsPath,
+    startupRecordsPath,
   ];
 
   test('public operational logging contracts stay typed and open', () {
@@ -67,7 +70,7 @@ void main() {
 
   test('production logger implementations stay synchronous and contained', () {
     final implementationFiles =
-        <File>[
+        [
               ...sortedDartFiles('lib'),
               ...sortedDartFiles('packages'),
             ]
@@ -79,7 +82,7 @@ void main() {
 
     expect(
       implementationFiles.map((file) => file.path),
-      <String>[loggerPath, developerLoggerPath],
+      [loggerPath, developerLoggerPath],
     );
     expect(
       occurrenceCount(
@@ -102,7 +105,7 @@ void main() {
         executableLogger,
         isNot(matches(RegExp(r'void\s+log\([^)]*\)\s+async\b'))),
       );
-      for (final fragment in <String>[
+      for (final fragment in [
         'Future<',
         'Timer(',
         'Timer.',
@@ -154,7 +157,7 @@ void main() {
     expect(recordSources, isNot(contains('get hashCode')));
     expect(recordSources, isNot(contains('toString()')));
     expect(recordSources, isNot(contains('factory App')));
-    for (final fragment in <String>[
+    for (final fragment in [
       'Map<',
       'List<',
       'StackTrace',
@@ -243,7 +246,7 @@ void main() {
         .join('\n');
     final executableRecordSources = withoutLineComments(recordSources);
 
-    for (final fragment in <String>[
+    for (final fragment in [
       ' async',
       'Future<',
       'Timer(',
@@ -266,7 +269,7 @@ void main() {
     for (final file in recordFiles) {
       expect(
         sourceImports(file.readAsStringSync()),
-        <String>[
+        [
           'package:template/app/diagnostics/logging/app_log_record.dart',
         ],
       );
@@ -291,8 +294,8 @@ void main() {
         .map((file) => file.path)
         .toList();
 
-    expect(projectCallers, <String>[developerLoggerPath]);
-    expect(writerImplementations, <String>[developerLoggerPath]);
+    expect(projectCallers, [developerLoggerPath]);
+    expect(writerImplementations, [developerLoggerPath]);
     final developerLogger = File(developerLoggerPath).readAsStringSync();
     expect(occurrenceCount(developerLogger, 'record.project('), 1);
     expect(
@@ -321,7 +324,7 @@ void main() {
       ),
       lessThan(developerLogger.indexOf('record.project(')),
     );
-    for (final fragment in <String>[
+    for (final fragment in [
       'supportCode(',
       'supportFlag(',
       'supportCount(',
@@ -351,7 +354,7 @@ void main() {
 
     expect(
       developerImporters,
-      <String>[reporterPath, developerLoggerPath]..sort(),
+      [reporterPath, developerLoggerPath]..sort(),
     );
     expect(occurrenceCount(developerLogger, 'developer.log('), 1);
     expect(occurrenceCount(reporter, 'developer.log('), 1);
@@ -359,7 +362,7 @@ void main() {
       developerLogger,
       contains("developer.log(message, name: 'Application', level: level);"),
     );
-    for (final fragment in <String>[
+    for (final fragment in [
       'FlutterError.presentError(',
       '.exceptionAsString(',
       'informationCollector(',
@@ -380,7 +383,7 @@ void main() {
     expect(observer, isNot(contains('AppErrorReporter')));
     expect(observer, isNot(contains('/error_reporting/')));
     expect(observer, isNot(contains('developer_app_logger.dart')));
-    for (final callback in <String>[
+    for (final callback in [
       'void onCreate(',
       'void onEvent(',
       'void onChange(',
@@ -395,14 +398,14 @@ void main() {
   });
 }
 
-const _recordExpectations = <_RecordExpectation>[
+const _recordExpectations = [
   _RecordExpectation(
     'AppBlocCreatedLogRecord',
     'const AppBlocCreatedLogRecord(this.componentType);',
     'app.bloc.created',
     'info',
     'debugOnly',
-    <String>["fields.debugType('component_type', componentType);"],
+    ["fields.debugType('component_type', componentType);"],
   ),
   _RecordExpectation(
     'AppBlocEventLogRecord',
@@ -410,7 +413,7 @@ const _recordExpectations = <_RecordExpectation>[
     'app.bloc.event',
     'info',
     'debugOnly',
-    <String>[
+    [
       "..debugType('component_type', componentType)",
       "..debugType('event_type', eventType);",
     ],
@@ -421,7 +424,7 @@ const _recordExpectations = <_RecordExpectation>[
     'app.bloc.state_changed',
     'info',
     'debugOnly',
-    <String>[
+    [
       "..debugType('component_type', componentType)",
       "..debugType('previous_state_type', previousStateType)",
       "..debugType('next_state_type', nextStateType);",
@@ -433,7 +436,7 @@ const _recordExpectations = <_RecordExpectation>[
     'app.bloc.action',
     'info',
     'debugOnly',
-    <String>[
+    [
       "..debugType('component_type', componentType)",
       "..debugType('action_type', actionType);",
     ],
@@ -444,7 +447,7 @@ const _recordExpectations = <_RecordExpectation>[
     'app.bloc.error_breadcrumb',
     'warning',
     'debugOnly',
-    <String>[
+    [
       "..debugType('component_type', componentType)",
       "..debugType('error_type', errorType);",
     ],
@@ -455,7 +458,7 @@ const _recordExpectations = <_RecordExpectation>[
     'app.bloc.closed',
     'info',
     'debugOnly',
-    <String>["fields.debugType('component_type', componentType);"],
+    ["fields.debugType('component_type', componentType);"],
   ),
   _RecordExpectation(
     'AppErrorReportedLogRecord',
@@ -463,7 +466,7 @@ const _recordExpectations = <_RecordExpectation>[
     'app.diagnostics.error_reported',
     'error',
     'supportSafe',
-    <String>["fields.supportCode('report_code', reportCode);"],
+    ["fields.supportCode('report_code', reportCode);"],
   ),
   _RecordExpectation(
     'AppErrorReporterFailureLogRecord',
@@ -471,32 +474,50 @@ const _recordExpectations = <_RecordExpectation>[
     'app.diagnostics.reporter_failed',
     'error',
     'supportSafe',
-    <String>["fields.supportCode('support_code', _supportCode);"],
+    ["fields.supportCode('support_code', _supportCode);"],
+  ),
+  _RecordExpectation(
+    'AppStartupStartedLogRecord',
+    'const AppStartupStartedLogRecord();',
+    'app.startup.started',
+    'info',
+    'supportSafe',
+    [],
+  ),
+  _RecordExpectation(
+    'AppStartupCompletedLogRecord',
+    'AppStartupCompletedLogRecord(this.duration)',
+    'app.startup.completed',
+    'info',
+    'supportSafe',
+    ["fields.supportDuration('duration', duration);"],
   ),
 ];
 
 const _recordFields = <String, List<String>>{
-  'AppBlocCreatedLogRecord': <String>['final Type componentType;'],
-  'AppBlocEventLogRecord': <String>[
+  'AppBlocCreatedLogRecord': ['final Type componentType;'],
+  'AppBlocEventLogRecord': [
     'final Type componentType;',
     'final Type eventType;',
   ],
-  'AppBlocStateChangedLogRecord': <String>[
+  'AppBlocStateChangedLogRecord': [
     'final Type componentType;',
     'final Type previousStateType;',
     'final Type nextStateType;',
   ],
-  'AppBlocActionLogRecord': <String>[
+  'AppBlocActionLogRecord': [
     'final Type componentType;',
     'final Type actionType;',
   ],
-  'AppBlocErrorBreadcrumbLogRecord': <String>[
+  'AppBlocErrorBreadcrumbLogRecord': [
     'final Type componentType;',
     'final Type errorType;',
   ],
-  'AppBlocClosedLogRecord': <String>['final Type componentType;'],
-  'AppErrorReportedLogRecord': <String>['final AppLogStableCode reportCode;'],
-  'AppErrorReporterFailureLogRecord': <String>[],
+  'AppBlocClosedLogRecord': ['final Type componentType;'],
+  'AppErrorReportedLogRecord': ['final AppLogStableCode reportCode;'],
+  'AppErrorReporterFailureLogRecord': [],
+  'AppStartupStartedLogRecord': [],
+  'AppStartupCompletedLogRecord': ['final Duration duration;'],
 };
 
 final class _RecordExpectation {

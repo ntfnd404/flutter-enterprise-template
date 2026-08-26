@@ -40,22 +40,21 @@ Flutter dart-defines are public client configuration. Never place passwords,
 private keys, service-account credentials, or private tokens in
 `env/*.env`.
 
-## Future startup flow
+## Startup flow
 
-Startup is the next separately reviewed runtime phase. Source of Truth v9 fixes
-the subordinate `initializeAppFramework` contract and ownership boundaries;
-the remaining public/test APIs and normal-application handoff are selected by
-the Startup implementation specification. The required responsibility order
-is:
+The accepted Startup runtime applies Source of Truth v9 through one testable
+composition root and one subordinate `initializeAppFramework` function. Its
+responsibility order is:
 
 ```text
-main → future runApplication
+main → runApplication
   → install one AppErrorBoundary
   → initialize Flutter binding inside its Zone
   → load and validate AppStartupConfiguration
   → call the subordinate initializeAppFramework function
   → build AppDependencies inside a transactional ownership boundary
   → runApp mounts one root Flutter lifecycle owner and the normal application
+  → record successful startup completion after runApp returns
   → on failure, clean up before mounting a privacy-safe fallback
 ```
 
@@ -74,13 +73,13 @@ that are intentionally deferred from the base scaffold are recorded in the
 
 ```text
 lib/
-├── main.dart                 # Composition root and startup fallback
+├── main.dart                 # One-line production entrypoint
 ├── app/                      # Application shell and app-wide policies
 │   ├── environment/          # Typed public client configuration
 │   ├── di/                   # App graph construction and ownership
 │   ├── diagnostics/          # Root handlers and privacy-safe diagnostics
 │   ├── events/               # Best-effort cross-feature AppEvent contracts
-│   ├── startup/              # Process-global framework initialization
+│   ├── startup/              # Composition root and framework initialization
 │   └── view/                 # Framework/application wrappers, not feature screens
 ├── core/
 │   ├── di/typedefs/          # Construction-only Factory vocabulary
@@ -99,7 +98,7 @@ packages/
 │   └── ordering/             # Downstream context and Catalog ACL
 └── libraries/
     ├── app_database/         # Shared physical Drift host and narrow stores
-    └── ui_kit/               # Material theme and semantic design tokens
+    └── <future capability>/  # Added only in its accepted phase
 ```
 
 This tree shows the architectural target. See the
@@ -133,11 +132,9 @@ borrowed stores; application services retain those repositories and expose only
 facades or other narrow ports through `AppDependencies`. Presentation never
 receives a repository, store, module, database, or vendor client.
 
-The target `packages/libraries/ui_kit` owns the shared Material 3 theme
-assembly and semantic design tokens used by both the normal application shell
-and the startup-failure shell. It is a reusable Flutter library without an
-authoritative business model, so it belongs under `libraries`, not
-`bounded_contexts`.
+The accepted normal and fallback wrappers deliberately use Flutter Material
+defaults. A future UI kit remains an autonomous capability rather than a
+Startup or routing prerequisite.
 
 A technical capability stays with its current owner until a real package
 boundary is justified by reuse, an independently useful public API, multiple
@@ -164,6 +161,10 @@ the publication policy.
 `test.env` uses the normal production graph. It is a launch profile, not a
 separate runtime architecture. Its distinct `APP_STORAGE_NAMESPACE=test`
 prevents integration data from sharing physical storage with `local`.
+
+All tracked profiles use hash URLs as the safe hosting-independent default.
+Path URLs remain supported only as a derived-deployment opt-in with server
+rewrites and direct-refresh integration tests.
 
 Every tracked profile contains public client configuration only. Deployment
 systems may provide another validated profile path when public endpoint values
@@ -305,8 +306,7 @@ matching boilerplate to every feature.
 
 ## Deferred application UI
 
-The accepted scaffold does not yet contain a normal application wrapper,
-routing implementation, or startup-failure presentation. Startup will define
-the normal/fallback ownership handoff without depending on a router. A
-multi-screen routing and reference-presentation phase follows only after that
-handoff is stable.
+The accepted scaffold contains a router-free normal wrapper and a privacy-safe
+pre-graph startup fallback. It does not yet contain a routing implementation,
+feature presentation, UI kit, or localization. A multi-screen routing and
+reference-presentation phase follows only after this handoff is stable.

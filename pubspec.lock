@@ -212,12 +212,11 @@ packages:
   ephemeral_bloc:
     dependency: "direct main"
     description:
-      path: "."
-      ref: "35d963ed5f083db540a51df9bf30d4c93e858632"
-      resolved-ref: "35d963ed5f083db540a51df9bf30d4c93e858632"
-      url: "https://github.com/ntfnd404/ephemeral_bloc"
-    source: git
-    version: "0.0.1"
+      name: ephemeral_bloc
+      sha256: de857b2f119ad7f71e9e182985563b5c2ee0800673b9c8ab5e65e8042c44e453
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
   fake_async:
     dependency: transitive
     description:
@@ -278,6 +277,11 @@ packages:
     version: "6.0.0"
   flutter_test:
     dependency: "direct dev"
+    description: flutter
+    source: sdk
+    version: "0.0.0"
+  flutter_web_plugins:
+    dependency: "direct main"
     description: flutter
     source: sdk
     version: "0.0.0"

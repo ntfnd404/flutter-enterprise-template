@@ -9,7 +9,7 @@ void main() {
   const loggingRoot = '$diagnosticsRoot/logging';
   const errorReportingRoot = '$diagnosticsRoot/error_reporting';
   const developerLoggerPath = '$loggingRoot/developer_app_logger.dart';
-  const expectedFiles = <String>[
+  const expectedFiles = [
     '$errorReportingRoot/app_error_boundary.dart',
     '$errorReportingRoot/app_error_formatter.dart',
     '$errorReportingRoot/app_error_report_kind.dart',
@@ -20,6 +20,7 @@ void main() {
     developerLoggerPath,
     '$loggingRoot/records/app_bloc_log_records.dart',
     '$loggingRoot/records/app_error_log_records.dart',
+    '$loggingRoot/records/app_startup_log_records.dart',
   ];
 
   test('the isolated tree has the exact accepted Core Diagnostics surface', () {
@@ -46,14 +47,14 @@ void main() {
     );
     expect(
       filesContaining(errorReportingFiles, '/logging/'),
-      <String>[
+      [
         '$errorReportingRoot/app_error_boundary.dart',
         '$errorReportingRoot/app_error_report_kind.dart',
       ],
       reason: 'Only the boundary and report-kind mapping use safe records.',
     );
 
-    const forbiddenDependencies = <String>[
+    const forbiddenDependencies = [
       'package:app_database/',
       'package:catalog/',
       'package:ordering/',
@@ -96,7 +97,7 @@ void main() {
 
     expect(
       sourceImports(logger),
-      <String>[
+      [
         'package:template/app/diagnostics/logging/app_log_record.dart',
       ],
     );
@@ -115,11 +116,11 @@ void main() {
         )
         .map((file) => file.path)
         .toList();
-    expect(developerDefinitions, <String>[developerLoggerPath]);
+    expect(developerDefinitions, [developerLoggerPath]);
   });
 
   test('future capabilities and dependencies have not entered runtime', () {
-    const forbiddenFragments = <String>[
+    const forbiddenFragments = [
       'AppLoggingModule',
       'AppSupportLogExporter',
       'AppSupportLogSnapshot',
@@ -147,7 +148,7 @@ void main() {
     final dependencies = File(
       'lib/app/di/app_dependencies.dart',
     ).readAsStringSync();
-    for (final symbol in <String>[
+    for (final symbol in [
       'AppLogger',
       'AppErrorReporter',
       'AppErrorBoundary',
@@ -158,7 +159,7 @@ void main() {
     }
 
     final externalImporters =
-        <File>[
+        [
               ...sortedDartFiles('lib'),
               ...sortedDartFiles('packages'),
             ]
@@ -171,23 +172,18 @@ void main() {
             .map((file) => file.path)
             .toList();
 
-    expect(
-      externalImporters,
-      isEmpty,
-    );
+    expect(externalImporters, [
+      'lib/app/startup/initialize_app_framework.dart',
+      'lib/app/startup/run_application.dart',
+    ]);
   });
 
   test('Diagnostics dependencies stay pinned to reviewed contracts', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
 
     expect(pubspec, contains('flutter_bloc: 9.1.1'));
-    expect(
-      pubspec,
-      contains(
-        'url: https://github.com/ntfnd404/ephemeral_bloc\n'
-        '      ref: 35d963ed5f083db540a51df9bf30d4c93e858632',
-      ),
-    );
+    expect(pubspec, contains('ephemeral_bloc: 0.1.0'));
+    expect(pubspec, isNot(contains('github.com/ntfnd404/ephemeral_bloc')));
     expect(pubspec, isNot(contains('idb_shim:')));
   });
 }

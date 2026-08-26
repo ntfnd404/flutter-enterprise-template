@@ -44,17 +44,12 @@ final class const AppBlocObserver({required AppLogger logger})
     }
   }
 
-  /// Records an action transition without reading or stringifying its payload.
+  /// Records an action without reading or stringifying its payload.
   @override
-  void onAction(
-    BlocBase<Object?> bloc,
-    EphemeralBlocChange<Object?> change,
-  ) {
-    super.onAction(bloc, change);
+  void onAction(BlocBase<Object?> bloc, Object action) {
+    super.onAction(bloc, action);
     if (kDebugMode) {
-      _safeLog(
-        AppBlocActionLogRecord(bloc.runtimeType, change.current.runtimeType),
-      );
+      _safeLog(AppBlocActionLogRecord(bloc.runtimeType, action.runtimeType));
     }
   }
 

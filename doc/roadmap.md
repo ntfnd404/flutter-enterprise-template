@@ -47,22 +47,24 @@ The local Git history has accepted these autonomous batches:
 | `538e194` | App-owned dependency graph |
 | `b0ea52e` | Application diagnostics |
 | `c3a1000` | Main routing deferral and Rolter reference extraction |
-| Revision containing this roadmap | Consolidated Architecture Source of Truth v9 |
+| `3e2f4cb` | Consolidated Architecture Source of Truth v9 |
+| Revision containing this roadmap | Startup runtime v1 |
 
-The v9 row uses a self-reference because a commit cannot contain its own final
-hash. The next accepted roadmap update replaces it with that revision's hash.
+The Startup row uses a self-reference because a commit cannot contain its own
+final hash. The next accepted roadmap update replaces it with that revision's
+hash.
 
 The accepted repository therefore contains the `bounded_contexts/libraries`
 package taxonomy, a shared physical database, the Catalog business context,
 the Ordering bounded context and Catalog ACL, and the Flutter 3.47/Dart 3.13
 platform baseline, app dependency graph, application diagnostics, and the
 provider-neutral routing deferral. The revision containing this roadmap accepts
-the consolidated v9 Startup/ownership target only; it does not add live Startup
-wiring.
+the consolidated v9 Startup/ownership target and the revision containing this
+roadmap accepts its live Startup runtime.
 
-The working tree contains later implementations so adjacent APIs can be
-developed and tested together. UI kit, routing, presentation, startup, and
-integration scenarios remain review candidates until their own commits.
+The working tree may contain later implementations so adjacent APIs can be
+developed and tested together. UI kit, routing, feature presentation, and
+later integration scenarios remain review candidates until their own commits.
 
 ## Accepted in `538e194`: App-owned dependency graph
 
@@ -88,10 +90,10 @@ composition-only.
 Catalog and Ordering facades intentionally have no Flutter consumer before the
 first reference-presentation phase after Startup. If that phase is cancelled or
 moved beyond the next major roadmap review, the unused outputs receive a
-removal/revalidation review rather than remaining indefinitely by inertia. The
-accepted `main.dart` remains the simple scaffold entrypoint until Startup, so
-the DI factory is tested production composition but is not yet live runtime
-wiring.
+removal/revalidation review rather than remaining indefinitely by inertia.
+Startup now constructs their real production graph, but its router-free `App`
+does not receive the unused delivery catalog merely to close that presentation
+gap artificially.
 
 The autonomous DI snapshot passed isolated analysis, tests, DartDoc, full
 quality checks, and staged review without blocker, high, or medium findings.
@@ -127,12 +129,12 @@ provider contract is maintained in
 [Diagnostics and error-handler lifecycle](architecture.md#diagnostics-and-error-handler-lifecycle),
 not repeated here.
 
-The accepted `main.dart` does not yet construct Diagnostics. This bounded
-runtime-consumer gap expires in Startup. UI kit, localization, presentation,
-and routing are not prerequisites. Startup record classes are not part of Core
-and arrive only with their real Startup consumer. If Startup is cancelled or
-materially redesigned, the unused boundary and observer extension points are
-re-reviewed rather than retained by inertia.
+Accepted Startup closes the Diagnostics runtime-consumer gap:
+`app/startup/run_application.dart` constructs one logger, reporter, and
+boundary identity, while `main.dart` only delegates to it. Framework
+initialization installs the BLoC observer using that logger. UI kit,
+localization, presentation, and routing remain independent. Startup records
+are not part of Core; they are accepted with their real Startup consumer.
 
 The accepted `AppEventBus` and `DemoActionCompletedAppEvent` remain documented
 extension points but have no production publisher/subscriber. The concrete bus
@@ -140,8 +142,8 @@ does not enter the graph until both roles have real consumers. Their bounded
 gap expires in the first reference-presentation phase after Startup; cancelling
 that scenario triggers a removal review.
 
-This phase does not accept `AppLoggingModule`, a support-log exporter, native
-cache or Web IndexedDB adapters, persistence dependencies, Startup records,
+Diagnostics Core itself does not accept `AppLoggingModule`, a support-log
+exporter, native cache or Web IndexedDB adapters, persistence dependencies,
 remote transport, analytics, or Support UI. The 4-KiB bound is intentionally
 not a Core assertion: it applies to a complete canonical persisted line,
 including the future storage envelope and final LF, and begins with the Storage
@@ -152,10 +154,9 @@ live under `app/diagnostics/logging/adapters` with an exact inward-port import
 allowlist. No adapter directory, base class, registry, or business import
 exception exists before that consumer.
 
-The isolated root-manifest delta is limited to `flutter_bloc: 9.1.1` and
-`ephemeral_bloc` at exact Git revision
-`35d963ed5f083db540a51df9bf30d4c93e858632`, plus their lockfile resolution.
-It introduces no support-log storage dependency.
+The isolated root-manifest delta is limited to exact hosted versions
+`flutter_bloc: 9.1.1` and `ephemeral_bloc: 0.1.0`, plus their lockfile
+resolution. It introduces no support-log storage dependency.
 
 Any widget or process-isolated integration scenario that later installs the
 boundary uses a recording reporter and asserts the complete expected record
@@ -170,9 +171,9 @@ is accepted by this revision.
 
 Source of Truth v9 replaces v8 and later overlapping amendments for Startup,
 process-global preparation, dependency composition, and resource ownership. It
-accepts documentation only:
+established the target that the subsequent Startup runtime implements:
 
-- future `runApplication` remains the sole composition root;
+- `runApplication` is the sole composition root;
 - binding is created inside the root boundary Zone before Environment or
   plugin work;
 - one subordinate top-level `initializeAppFramework` configures only
@@ -186,46 +187,32 @@ accepts documentation only:
 - Firebase/FCM remain illustrative placement recipes, not dependencies or an
   implicitly scheduled provider phase.
 
-The v9 candidate changes only the six canonical or derived documentation
-files. Dirty Startup, routing, UI-kit, presentation, manifest, and integration
-files remain unaccepted. Runtime risk controls enter atomically with their
-owning Startup/provider phase rather than as placeholder code.
+The v9 candidate changed only the six canonical or derived documentation files.
+Its runtime risk controls entered atomically with the accepted Startup phase
+rather than as placeholder code.
 
-## Next review: Startup Source of Truth
+## Accepted by this revision: Startup runtime v1
 
-**Entry criterion:** Source of Truth v9, Diagnostics Core, and the app-owned
-dependency graph are accepted.
+Startup runtime v1 implements the v9 transaction without routing, feature
+presentation, UI kit, localization, Firebase, or persistent support logging:
 
-Prepare a decision-complete Startup implementation specification before
-changing runtime. It must apply the v9 ordering and ownership boundary and
-resolve the remaining runtime-specific decisions:
+- `main` delegates to one `void runApplication` composition root;
+- one logger, reporter, and boundary identity encloses binding, configuration,
+  framework initialization, graph construction, handoff, and fallback;
+- `initializeAppFramework` configures URL policy and the global BLoC observer
+  but owns no application-lifetime resource;
+- `AppDependencyGraphOwner` becomes the only owner after successful `runApp`;
+- `AppStartupCompletedLogRecord` is emitted only after `runApp` returns and
+  local graph authority is released;
+- Environment and other Startup failures render only their stable support code
+  in a graph-free fallback;
+- tracked profiles use hash URLs by default, while path URLs remain an explicit
+  deployment opt-in;
+- process-isolated tests cover the real database graph and invalid Environment.
 
-- normal application-widget handoff and stable public/test APIs;
-- one exact logger/reporter/boundary identity;
-- Startup records and their ordering;
-- graph construction, rollback, ownership transfer, and disposal reporting;
-- privacy-safe fallback mounting and fallback failure;
-- test-only seams without a second composition root;
-- future router compatibility without a speculative router factory;
-- exact source/test allowlist and process-isolated integration scenarios.
-
-UI kit, localization, and routing are not Startup prerequisites.
-
-**Acceptance:** the specification has no blocker/high/medium finding and does
-not silently authorize runtime, dependency, or staging changes.
-
-## Startup implementation
-
-**Entry criterion:** the separate Startup Source of Truth is accepted.
-
-Implement only its reviewed API and ownership transaction. Startup closes the
-Diagnostics runtime-consumer gap and hands one successfully built graph to one
-root Flutter lifecycle owner. It does not add a router merely to make the
-application wrapper look complete.
-
-**Acceptance:** Environment, framework, graph, handoff, cleanup, reporter, and
-fallback failures preserve original stacks and ownership; process-global tests
-remain isolated.
+The only manifest addition is Flutter's SDK-owned `flutter_web_plugins` adapter.
+Normal `App` deliberately receives no unused facades. UI kit, localization, and
+routing are not Startup prerequisites.
 
 ## Post-Startup multi-screen routing and reference presentation gate
 

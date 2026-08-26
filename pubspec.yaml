@@ -13,11 +13,10 @@ workspace:
 dependencies:
   app_database: 0.1.0
   catalog: 0.1.0
-  ephemeral_bloc:
-    git:
-      url: https://github.com/ntfnd404/ephemeral_bloc
-      ref: 35d963ed5f083db540a51df9bf30d4c93e858632 # v0.0.1
+  ephemeral_bloc: 0.1.0
   flutter:
+    sdk: flutter
+  flutter_web_plugins:
     sdk: flutter
   flutter_bloc: 9.1.1
   ordering: 0.1.0

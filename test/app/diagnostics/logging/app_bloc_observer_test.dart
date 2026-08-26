@@ -38,7 +38,7 @@ void main() {
 
       expect(
         logger.records.map((record) => record.descriptor.eventName),
-        <String>[
+        [
           'app.bloc.created',
           'app.bloc.event',
           'app.bloc.state_changed',
@@ -230,7 +230,7 @@ final class _ThrowingAppLogger implements AppLogger {
 }
 
 final class _TestBloc extends Bloc<_TestEvent, Object?>
-    with EphemeralBlocMixin<Object?, Object?> {
+    with EphemeralBlocMixin<Object?, Object> {
   _TestBloc(super.initialState) {
     on<_SetStateEvent>((event, emit) {
       emit(event.state);

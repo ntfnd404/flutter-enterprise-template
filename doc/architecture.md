@@ -44,21 +44,22 @@ of truth.
 | Component | Responsibility |
 |---|---|
 | `main` | One-line delegate to the testable application entrypoint |
-| Future `runApplication` | The only composition root: root diagnostics, binding prelude, Environment loading, graph composition, ownership handoff, and startup fallback |
+| `runApplication` in `app/startup/run_application.dart` | The only composition root: root diagnostics, binding prelude, Environment loading, graph composition, ownership handoff, and startup fallback |
 | `AppErrorBoundary` | Root zone, Flutter/platform handlers, injected safe reporting |
 | `AppLoggingModule` | Future root-isolate support-log ownership outside the dependency graph |
-| Future `initializeAppFramework` | Subordinate Environment-dependent process/root-isolate framework preparation after the binding prelude |
+| `initializeAppFramework` | Subordinate Environment-dependent process/root-isolate framework preparation after the binding prelude |
 | `buildAppDependencies` | Concrete app-level Database→Catalog→Ordering composition |
 | `buildAppDependencyGraph<T>` | Generic transactional construction over one private resource ledger |
 | `AppDependencies` | Immutable downstream delivery catalog of permitted ports/facades, not an inventory of graph objects |
 | `AppDependencyGraphOwner` | Flutter lifecycle adapter that claims one `AppDependencyGraph<Object>` once |
-| Future normal application widget | Router-free root application UI lifecycle; exact API selected by the Startup phase |
+| `App` | Router-free, dependency-free normal root wrapper after graph handoff |
+| `StartupFailureApp` | Pre-graph fallback that receives only a stable diagnostic code |
 
 ## Startup sequence
 
 ```text
 main
-→ future runApplication
+→ runApplication
     → resolve one AppLogger and one AppErrorReporter
     → construct one AppErrorBoundary from those exact identities
     → boundary.run
@@ -71,8 +72,9 @@ main
         → buildAppDependencyGraph creates one private ownership boundary
             → buildAppDependencies receives register-only authority
         → construct the router-free normal application wrapper
-        → log the Startup-completed breadcrumb
         → runApp hands the graph to one AppDependencyGraphOwner
+        → release local graph authority
+        → log the Startup-completed breadcrumb
 ```
 
 The boundary is installed before binding initialization, Environment parsing,
@@ -81,20 +83,31 @@ or any future vendor reporter. In debug,
 binding is then initialized inside the guarded root zone. This configuration-
 free prelude is deliberately separate from `initializeAppFramework`, whose URL
 strategy and required-SDK work may depend on the validated Environment. No
-plugin call occurs before the binding prelude. The first Startup implementation
-uses one top-level `initializeAppFramework` function rather than a static
-bootstrap class or a generic initializer registry.
+plugin call occurs before the binding prelude. Startup uses one top-level
+`initializeAppFramework` function rather than a static coordinator or a generic
+initializer registry.
 
 The later Persistent Support Log phase inserts bounded best-effort local
 activation after binding and before Environment parsing. That order permits a
 support-safe Environment failure to reach app-local storage without reading or
 persisting the rejected configuration. Until that phase is accepted, Startup
 uses the same sequence with the activation step absent. `runApp` remains inside
-the guarded zone. Production does not predeclare a router factory or a
-normal-application constructor. The Startup Source of Truth selects those
-public/test seams and tests own and dispose any injected boundary. Until that
-runtime phase is accepted, this sequence is a target contract rather than a
-claim about the current `main.dart`.
+the guarded zone. Production predeclares neither a router factory nor a
+feature/presentation dependency bag. Tests own and dispose any boundary created
+through the exact factory seam after report and graph quiescence.
+
+`runApplication` returns `void`; the asynchronous Startup body stays inside the
+boundary-owned error Zone. Its optional parameters are narrow test seams for
+the exact logger, reporter, boundary factory, configuration loader, framework
+initializer, and dependency factory. They are not registries, option bags, or
+alternate composition roots. The loader callback is invoked only after binding
+inside the boundary, so tests cannot bypass production ordering by injecting an
+already-built configuration object.
+
+Every tracked Environment profile selects hash URLs. The conditional Web
+adapter supports path URLs only as an explicit derived-deployment opt-in with
+host rewrites and direct-refresh tests; selecting the enum value does not prove
+that deployment contract. Non-Web platforms use the no-op adapter.
 
 ## Top-level boundaries
 
@@ -140,7 +153,7 @@ the same vertical slice. Any future router-specific adapter remains an outer
 UI concern and cannot move router dependencies into a bounded context, inner
 application code, or BLoC.
 
-`app/view` is not a catalog of screens. The Startup phase will define the root
+`app/view` is not a catalog of screens. Accepted Startup defines only the root
 normal/fallback wrappers and ownership handoff without depending on a routing
 package. User-facing content and state remain in feature slices.
 
@@ -442,8 +455,8 @@ forbidding database access from presentation.
 
 | Value or action | Owner | Reason |
 |---|---|---|
-| Flutter binding and debug Zone policy | Future `runApplication` inside `AppErrorBoundary.run` | Configuration-free root prelude before Environment and plugin work |
-| URL strategy, global BLoC observer, required global SDK preparation | Future top-level `initializeAppFramework` | Process/root-isolate preparation after binding and Environment validation; each concrete initializer owns its reentrancy and retry policy |
+| Flutter binding and debug Zone policy | `runApplication` inside `AppErrorBoundary.run` | Configuration-free root prelude before Environment and plugin work |
+| URL strategy, global BLoC observer, required global SDK preparation | Top-level `initializeAppFramework` | Process/root-isolate preparation after binding and Environment validation; each concrete initializer owns its reentrancy and retry policy |
 | Firebase/SDK global registry handle used only by an adapter | Local variable in the owning module factory | Borrowed process-global value, not downstream API |
 | Unique SDK handle that cannot be reacquired and requires deletion | Explicit root or graph owner selected with the integration | A `Future<void>` initializer must not discard lifecycle authority |
 | Simple HTTP/RPC client shared as app infrastructure | App module or direct leaf registration in `buildAppDependencies` | Explicit app ownership without exposing it to presentation |
@@ -462,7 +475,7 @@ forbidding database access from presentation.
 | Future router delegate or UI controller | Root application widget or a flow shell | UI lifecycle, not graph lifecycle |
 | Application-wide best-effort AppEvent notification | `app/events` | App-owned catalog prevents feature cycles without misclassifying the notification as a DDD integration event |
 | Future cross-feature navigation capability | Outer application UI composition | Narrow semantic port added only with a real caller; never EventBus or a global locator |
-| Future startup fallback UI | Startup-owned root UI composition | Pre-graph recovery receives only privacy-safe data |
+| Startup fallback UI | `StartupFailureApp` mounted by root composition | Pre-graph recovery receives only `APP-ENVIRONMENT-001` or `APP-STARTUP-001` |
 | Ephemeral action stream | Owning BLoC | Same-feature one-shot UI commands |
 
 `AppDependencies` is not an inventory of every object constructed inside the
@@ -635,8 +648,19 @@ production holder disposes a claimed graph. Ownership-token machinery would
 add complexity without a current competing owner.
 
 Successful `runApp` return means root attachment was scheduled, not that the
-first frame mounted. The scaffold deliberately has no mount completer,
-ownership state machine, generic shutdown barrier, or live graph replacement.
+first frame mounted. Only after that return does composition release its local
+graph authority and emit `AppStartupCompletedLogRecord`; its duration ends at
+that scheduling boundary and does not claim persistence durability or awaited
+shutdown. The scaffold deliberately has no mount completer, ownership state
+machine, generic shutdown barrier, or live graph replacement.
+
+An Environment-loader primary mounts `StartupFailureApp` with only
+`APP-ENVIRONMENT-001`; every other post-binding Startup primary uses only
+`APP-STARTUP-001`. Raw error, stack, configuration, and rejected values never
+enter fallback UI or operational logs. If binding creation itself fails there
+is no usable Flutter mounting surface, so the failure is reported but no
+fallback is attempted. A fallback mounting failure escapes once to the root
+Zone and never triggers a second fallback.
 
 A capability with private clients, repositories, subscriptions, or partial
 rollback rules is constructed by a cohesive module factory. The application
@@ -1014,17 +1038,18 @@ Future<void> initializeAppFramework({
 });
 ```
 
-Its initial body uses `Future<void>.sync` to configure the URL strategy and set
-one `AppBlocObserver` with the exact root logger. The function is not a second
-composition root, does not retain SDK handles, and does not impose shared retry
+Its initial body uses context-inferred `Future.sync` to configure the URL
+strategy and set one `AppBlocObserver` with the exact root logger. The function
+is not a second composition root, does not retain SDK handles, and does not
+impose shared retry
 or terminal-failure policy on SDKs that do not yet exist. Process-global work
 does not promise generic rollback: a successful earlier global step may remain
 installed if a later required step fails. Every concrete initializer therefore
 documents reentrancy, retry, partial-failure, and test-isolation semantics. A
 unique handle that cannot be reacquired and requires deletion receives an
 explicit root or graph owner instead of disappearing into this `Future<void>`.
-Static `AppBootstrap`, `AppLauncher`, generic startup coordinator classes, and
-initializer registries are not part of the target.
+Static startup or launcher coordinator classes and initializer registries are
+not part of the target.
 
 ## Diagnostics and error-handler lifecycle
 
@@ -1183,13 +1208,12 @@ Diagnostics Core contains exactly this record vocabulary:
 | `AppErrorReportedLogRecord` | `app.diagnostics.error_reported` | 1 | supportSafe | error | `report_code` |
 | `AppErrorReporterFailureLogRecord` | `app.diagnostics.reporter_failed` | 1 | supportSafe | error | `support_code = APP-REPORT-001` |
 
-The Startup phase later adds `AppStartupStartedLogRecord`
+Accepted Startup adds `AppStartupStartedLogRecord`
 (`app.startup.started`, no fields) and `AppStartupCompletedLogRecord`
 (`app.startup.completed`, non-negative `duration`). Both begin at event version
-1. They are not part of
-Diagnostics Core and are not added merely to anticipate a caller. A negative
-duration is rejected by the later record constructor with a static privacy-safe
-message.
+1. They are not part of Diagnostics Core and exist because Startup is their
+real caller. A negative duration is rejected by the record constructor with a
+static privacy-safe message.
 
 Event-schema, persisted-entry, exported-NDJSON, and backend-layout versions are
 independent namespaces. An event version changes when a persisted field's
@@ -1252,7 +1276,7 @@ Zone remains mandatory ([Flutter issue 100277](https://github.com/flutter/flutte
 The public `run` is `void`: it claims one isolate-local active-owner lease,
 installs handlers inside `runZonedGuarded<void>`, and invokes the asynchronous
 body with `unawaited`. The body's Future never crosses the error-zone boundary.
-Binding initialization and `runApp` later execute inside that body. Startup
+Binding initialization and `runApp` execute inside that body. Startup
 sets `BindingBase.debugZoneErrorsAreFatal = true` before creating the binding in
 debug.
 
@@ -1806,9 +1830,10 @@ failure.
 
 Accepted unit and widget tests cover environment parsing, safe diagnostics,
 root-handler ownership and restoration, scoped BLoC breadcrumbs/reporting,
-aggregate build rollback, cleanup ordering, graph ownership transfer, and graph
-owner disposal callbacks. Startup, presentation, live EventBus consumers, and
-routing add their own scenario coverage only in their accepted phases.
+aggregate build rollback, cleanup ordering, graph ownership transfer, graph
+owner disposal callbacks, Startup operation ordering, safe fallback, and
+normal handoff. Presentation, live EventBus consumers, and routing add their
+own scenario coverage only in their accepted phases.
 
 Device-dependent integration scenarios run in separate processes:
 
