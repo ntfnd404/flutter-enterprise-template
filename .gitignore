@@ -30,7 +30,7 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
-/build/
+**/build/
 /coverage/
 
 # Symbolication related
@@ -44,6 +44,5 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
-# Env files
-# TODO: uncommit in your project
-# config/*.env
+# Widget Preview related
+.widget_preview/

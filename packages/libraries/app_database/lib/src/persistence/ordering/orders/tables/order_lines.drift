@@ -1,0 +1,22 @@
+import 'orders.drift';
+
+CREATE TABLE ordering_order_lines (
+  order_id INTEGER NOT NULL REFERENCES ordering_orders(id) ON DELETE CASCADE,
+  catalog_product_id INTEGER NOT NULL CHECK (catalog_product_id > 0),
+  product_title_snapshot TEXT NOT NULL CHECK (
+    length(product_title_snapshot) > 0
+  ),
+  unit_price_minor_units INTEGER NOT NULL CHECK (
+    unit_price_minor_units BETWEEN 1 AND 9007199254740991
+  ),
+  currency_code TEXT NOT NULL CHECK (
+    currency_code GLOB '[A-Z][A-Z][A-Z]' AND currency_code <> 'XXX'
+  ),
+  quantity INTEGER NOT NULL CHECK (
+    quantity BETWEEN 1 AND 9007199254740991
+  ),
+  catalog_revision INTEGER NOT NULL CHECK (
+    catalog_revision BETWEEN 0 AND 9007199254740991
+  ),
+  PRIMARY KEY (order_id, catalog_product_id)
+);

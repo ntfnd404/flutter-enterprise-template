@@ -1,0 +1,53 @@
+CREATE TABLE ordering_orders (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT CHECK (id > 0),
+  status_value INTEGER NOT NULL DEFAULT 0 CHECK (
+    status_value IN (0, 1, 2)
+  ),
+  total_minor_units INTEGER CHECK (
+    total_minor_units IS NULL OR
+    total_minor_units BETWEEN 1 AND 9007199254740991
+  ),
+  currency_code TEXT CHECK (
+    currency_code IS NULL OR (
+      currency_code GLOB '[A-Z][A-Z][A-Z]' AND currency_code <> 'XXX'
+    )
+  ),
+  revision INTEGER NOT NULL DEFAULT 0 CHECK (
+    revision BETWEEN 0 AND 9007199254740991
+  ),
+  created_at_utc_milliseconds INTEGER NOT NULL CHECK (
+    created_at_utc_milliseconds BETWEEN 0 AND 8640000000000000
+  ),
+  placed_at_utc_milliseconds INTEGER CHECK (
+    placed_at_utc_milliseconds IS NULL OR
+    placed_at_utc_milliseconds BETWEEN 0 AND 8640000000000000
+  ),
+  cancelled_at_utc_milliseconds INTEGER CHECK (
+    cancelled_at_utc_milliseconds IS NULL OR
+    cancelled_at_utc_milliseconds BETWEEN 0 AND 8640000000000000
+  ),
+  CHECK (
+    (total_minor_units IS NULL AND currency_code IS NULL) OR
+    (total_minor_units IS NOT NULL AND currency_code IS NOT NULL)
+  ),
+  CHECK (
+    (
+      status_value = 0 AND
+      placed_at_utc_milliseconds IS NULL AND
+      cancelled_at_utc_milliseconds IS NULL
+    ) OR (
+      status_value = 1 AND
+      total_minor_units IS NOT NULL AND
+      currency_code IS NOT NULL AND
+      placed_at_utc_milliseconds IS NOT NULL AND
+      cancelled_at_utc_milliseconds IS NULL
+    ) OR (
+      status_value = 2 AND
+      cancelled_at_utc_milliseconds IS NOT NULL AND
+      (
+        placed_at_utc_milliseconds IS NULL OR
+        (total_minor_units IS NOT NULL AND currency_code IS NOT NULL)
+      )
+    )
+  )
+);

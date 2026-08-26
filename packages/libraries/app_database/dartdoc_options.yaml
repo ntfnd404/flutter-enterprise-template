@@ -1,0 +1,7 @@
+dartdoc:
+  categories:
+    database-architecture:
+      markdown: README.md
+      displayName: Database architecture
+  categoryOrder:
+    - database-architecture
