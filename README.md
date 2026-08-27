@@ -231,6 +231,7 @@ make check-env ENV_FILE=<path>
 make check-config
 make docs
 make check
+make check-ci
 make run-local
 make run-dev
 make run-prod
@@ -238,13 +239,24 @@ make run-prod
 
 `make check` intentionally excludes device-dependent integration scenarios,
 which are added in their dedicated roadmap phase and run as separate
-processes. `make test-database-web` drives real Chrome headlessly through the
-Flutter Web Server device and verifies that WASM-backed data survives closing
-and recreating the database module. Start a ChromeDriver compatible with the
+processes. `make check-ci` reproduces the clean-checkout GitHub quality gate:
+it also verifies formatting, the locked dependency resolution, committed Drift
+source/schema outputs, and that tools leave no tracked or non-ignored files.
+Use `make check` while developing in a dirty tree and `make check-ci` only from
+a clean committed or materialized tree.
+
+`make test-database-web` drives real Chrome headlessly through the Flutter Web
+Server device and verifies that WASM-backed data survives closing and
+recreating the database module. Start a ChromeDriver compatible with the
 installed Chrome on local port `4444` before running that target; the driver is
 test infrastructure and is not committed to the application repository. The
 Web Server device intentionally avoids the known Flutter/DWDS Chrome debug
 connection race while exercising the same browser storage implementation.
+
+The tracked GitHub workflow travels with a repository created from this
+template. GitHub rulesets and branch protection do not: the derived repository
+must require its `Quality gate` check separately. The minimal workflow does not
+claim device, real-Chrome, platform-build, release, or deployment coverage.
 
 ## Adapting the scaffold
 
