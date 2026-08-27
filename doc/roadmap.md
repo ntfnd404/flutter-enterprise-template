@@ -50,18 +50,16 @@ The local Git history has accepted these autonomous batches:
 | `3e2f4cb` | Consolidated Architecture Source of Truth v9 |
 | `12e64d3` | Startup runtime v1 |
 | `ea67c51` | Enterprise Routing v2 and reference presentation |
-| Revision containing this roadmap | Minimal CI quality gate |
-
-Self-reference rows are replaced with their final hashes by the next accepted
-roadmap update because a commit cannot contain its own hash.
+| `a18ae41` | Minimal CI quality gate |
 
 The accepted repository therefore contains the `bounded_contexts/libraries`
 package taxonomy, a shared physical database, the Catalog business context,
 the Ordering bounded context and Catalog ACL, and the Flutter 3.47/Dart 3.13
-platform baseline, app dependency graph, application diagnostics, and the
-provider-neutral routing deferral. Later accepted revisions implement the
-consolidated v9 Startup/ownership target, live Startup runtime, and Enterprise
-Routing v2.
+platform baseline, app dependency graph, application diagnostics, consolidated
+v9 Startup ownership, live Startup runtime, Enterprise Routing v2 with
+`go_router`, reference presentation, and the minimal CI quality gate. The prior
+provider-neutral routing deferral remains a historical step; it no longer
+defines the main branch routing target.
 
 The working tree may contain later implementations so adjacent APIs can be
 developed and tested together. UI kit, localization, authenticated routing
@@ -165,7 +163,7 @@ Remote diagnostics and analytics remain separate capability gates. No provider
 registry, transport, queue, interceptor pipeline, or analytics event hierarchy
 is accepted by this revision.
 
-## Accepted by this revision: Consolidated architecture v9
+## Accepted in `3e2f4cb`: Consolidated architecture v9
 
 Source of Truth v9 replaces v8 and later overlapping amendments for Startup,
 process-global preparation, dependency composition, and resource ownership. It
@@ -189,7 +187,7 @@ The v9 candidate changed only the six canonical or derived documentation files.
 Its runtime risk controls entered atomically with the accepted Startup phase
 rather than as placeholder code.
 
-## Accepted by this revision: Startup runtime v1
+## Accepted in `12e64d3`: Startup runtime v1
 
 Startup runtime v1 originally implemented the v9 transaction without routing,
 feature presentation, UI kit, localization, Firebase, or persistent support logging:
@@ -213,7 +211,7 @@ Startup remains provider-neutral orchestration. The later routing phase passes
 the built delivery catalog into normal `App`; UI kit and localization are not
 Startup or routing prerequisites.
 
-## Accepted by this revision: Enterprise Routing v2
+## Accepted in `ea67c51`: Enterprise Routing v2
 
 The post-Startup gate selects exact `go_router: 18.0.0` and a single handwritten
 app route catalog. Root `App` owns router lifecycle; features, BLoCs, and
@@ -281,7 +279,7 @@ ordinary unit-test command.
 Add a real external-system integration flow with the first external adapter;
 the local Drift reference does not invent a remote provider.
 
-## Accepted by this revision: Minimal CI quality gate
+## Accepted in `a18ae41`: Minimal CI quality gate
 
 The repository now has one Ubuntu workflow for pull requests, pushes to `main`,
 and manual runs. It installs Flutter 3.47.0 from the checksum-pinned official
