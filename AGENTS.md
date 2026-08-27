@@ -73,6 +73,7 @@ launcher/bootstrapper class, or a second composition root.
 
 ```text
 make check
+make check-ci
 make test-database-web
 make test-integration DEVICE=<device>
 make test-integration-startup-failure DEVICE=<device>
@@ -83,7 +84,11 @@ make run-prod
 
 `make check` runs analysis, unit/widget/architecture tests, environment
 validation, and DartDoc validation. Integration tests are separate because they
-require a Flutter device.
+require a Flutter device. `make check-ci` additionally verifies formatting,
+the locked dependency resolution, Drift source/schema freshness, and a clean
+repository; run it only from a clean committed or materialized tree. Real
+Chrome persistence, device integration, and platform builds remain separate
+targets.
 
 ## Rules
 

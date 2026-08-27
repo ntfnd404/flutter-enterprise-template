@@ -48,8 +48,9 @@ The local Git history has accepted these autonomous batches:
 | `b0ea52e` | Application diagnostics |
 | `c3a1000` | Main routing deferral and Rolter reference extraction |
 | `3e2f4cb` | Consolidated Architecture Source of Truth v9 |
-| Revision containing this roadmap | Startup runtime v1 |
-| Revision containing this roadmap | Enterprise Routing v2 and reference presentation |
+| `12e64d3` | Startup runtime v1 |
+| `ea67c51` | Enterprise Routing v2 and reference presentation |
+| Revision containing this roadmap | Minimal CI quality gate |
 
 Self-reference rows are replaced with their final hashes by the next accepted
 roadmap update because a commit cannot contain its own hash.
@@ -280,15 +281,19 @@ ordinary unit-test command.
 Add a real external-system integration flow with the first external adapter;
 the local Drift reference does not invent a remote provider.
 
-## Minimal CI quality gate
+## Accepted by this revision: Minimal CI quality gate
 
-Add one Ubuntu workflow for pull requests, pushes to `main`, and manual runs.
-Pin Flutter 3.47.0, use immutable reviewed action revisions, least permissions,
-timeouts, and concurrency cancellation. Run non-mutating format checks,
-analysis, tests, configuration validation, DartDoc, and Drift source/schema
-freshness from a clean checkout.
+The repository now has one Ubuntu workflow for pull requests, pushes to `main`,
+and manual runs. It installs Flutter 3.47.0 from the checksum-pinned official
+archive, uses immutable reviewed GitHub Action revisions, least permissions, a
+timeout, and concurrency cancellation. The clean-checkout gate verifies locked
+dependency resolution, non-mutating formatting, analysis, tests, configuration
+validation, DartDoc, Drift source/schema freshness, and a clean final tree.
 
-This phase does not claim platform-build coverage.
+Only the verified Flutter archive is cached, and its checksum is checked after
+every restore. Pub dependencies and the extracted SDK are not cached. This
+phase does not claim coverage thresholds, platform builds, real-Chrome storage,
+device integration, release, or deployment automation.
 
 ## AST-based architecture guards
 

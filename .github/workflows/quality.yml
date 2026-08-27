@@ -1,0 +1,102 @@
+name: Quality
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_ARCHIVE_NAME: flutter_linux_3.47.0-stable.tar.xz
+  FLUTTER_ARCHIVE_SHA256: 26cd99d3d94b1367e6b50535a18aeef0282c10a535bbe3ec493534dcdab75296
+  FLUTTER_ARCHIVE_URL: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.47.0-stable.tar.xz
+  FLUTTER_FRAMEWORK_REVISION: 4cf24164269a5ebf0c16a028a00727d0e77bbb05
+  FLUTTER_VERSION: 3.47.0
+  DART_VERSION: 3.13.0
+
+jobs:
+  quality:
+    name: Quality gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Restore verified Flutter archive cache
+        id: flutter-archive-cache
+        uses: actions/cache/restore@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ${{ runner.tool_cache }}/flutter-archives/${{ env.FLUTTER_ARCHIVE_NAME }}
+          key: flutter-${{ runner.os }}-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ env.FLUTTER_ARCHIVE_SHA256 }}
+
+      - name: Download Flutter archive
+        if: steps.flutter-archive-cache.outputs.cache-hit != 'true'
+        run: |
+          archive_directory="$RUNNER_TOOL_CACHE/flutter-archives"
+          mkdir -p "$archive_directory"
+          curl --fail --location --retry 3 \
+            --output "$archive_directory/$FLUTTER_ARCHIVE_NAME" \
+            "$FLUTTER_ARCHIVE_URL"
+
+      - name: Verify Flutter archive
+        run: |
+          archive_path="$RUNNER_TOOL_CACHE/flutter-archives/$FLUTTER_ARCHIVE_NAME"
+          printf '%s  %s\n' "$FLUTTER_ARCHIVE_SHA256" "$archive_path" \
+            | sha256sum --check --strict
+
+      - name: Save verified Flutter archive cache
+        if: steps.flutter-archive-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ${{ runner.tool_cache }}/flutter-archives/${{ env.FLUTTER_ARCHIVE_NAME }}
+          key: flutter-${{ runner.os }}-${{ runner.arch }}-${{ env.FLUTTER_VERSION }}-${{ env.FLUTTER_ARCHIVE_SHA256 }}
+
+      - name: Install Flutter SDK
+        run: |
+          archive_path="$RUNNER_TOOL_CACHE/flutter-archives/$FLUTTER_ARCHIVE_NAME"
+          tar -xJf "$archive_path" -C "$RUNNER_TEMP"
+          printf '%s\n' "FLUTTER_ROOT=$RUNNER_TEMP/flutter" >> "$GITHUB_ENV"
+          printf '%s\n' "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+
+      - name: Verify Flutter toolchain
+        run: |
+          flutter --version
+          dart --version
+          flutter --version --machine \
+            | jq --exit-status \
+              --arg dart "$DART_VERSION" \
+              --arg revision "$FLUTTER_FRAMEWORK_REVISION" \
+              --arg version "$FLUTTER_VERSION" \
+              '.channel == "stable"
+                and .dartSdkVersion == $dart
+                and .frameworkRevision == $revision
+                and .frameworkVersion == $version' \
+              > /dev/null
+
+      - name: Run clean-checkout quality gate
+        run: make check-ci
+
+      - name: Verify repository remains clean
+        run: |
+          git diff --check
+          tree_status="$(git status --porcelain=v1 --untracked-files=all)"
+          if [ -n "$tree_status" ]; then
+            printf '%s\n' "$tree_status"
+            git diff --
+            exit 1
+          fi
